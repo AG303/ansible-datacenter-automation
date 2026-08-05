@@ -1,0 +1,8 @@
+{{ ansible_managed | comment(decoration='# ') }}
+# Managed by the kubernetes_node_bootstrap Ansible role — do not edit by hand.
+# Base content generated from `containerd config default`, with the
+# SystemdCgroup driver toggled per kubernetes_containerd_use_systemd_cgroup.
+
+{{ kubernetes_containerd_default_config.stdout
+   | regex_replace('SystemdCgroup = (true|false)',
+                    'SystemdCgroup = ' + (kubernetes_containerd_use_systemd_cgroup | string | lower)) }}

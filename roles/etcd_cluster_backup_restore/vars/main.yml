@@ -1,0 +1,12 @@
+---
+# roles/etcd_cluster_backup_restore/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+etcd_client_dependency_packages:
+  RedHat:
+    - tar
+    - ca-certificates
+  Debian:
+    - tar
+    - ca-certificates

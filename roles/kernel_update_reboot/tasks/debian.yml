@@ -1,0 +1,23 @@
+---
+# roles/kernel_update_reboot/tasks/debian.yml — Debian-family kernel update
+- name: Refresh apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when: kernel_update_cache | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Update kernel meta-package to latest available version
+  ansible.builtin.apt:
+    name: "{{ kernel_package_name_override | default(kernel_package_name['Debian'], true) }}"
+    state: latest
+  register: kernel_debian_update_result
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tags: [patch, kernel_update_reboot]
+
+- name: Remove obsolete kernel packages
+  ansible.builtin.apt:
+    autoremove: true
+    purge: true
+  tags: [patch, kernel_update_reboot]

@@ -1,0 +1,64 @@
+---
+# roles/ntp_time_sync/tasks/debian.yml — chrony (default) or systemd-timesyncd (opt-in fallback)
+- name: Ensure chrony package is installed (default provider)
+  ansible.builtin.package:
+    name: "{{ chrony_package_name[ansible_facts['os_family']] }}"
+    state: present
+  when: not ntp_use_systemd_timesyncd_fallback | bool
+  tags: [security, ntp]
+
+- name: Deploy chrony.conf from template (default provider)
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: "{{ chrony_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: not ntp_use_systemd_timesyncd_fallback | bool
+  notify: Restart chronyd
+  tags: [security, ntp]
+
+- name: Ensure chronyd service is enabled and running (default provider)
+  ansible.builtin.service:
+    name: "{{ chrony_service_name[ansible_facts['os_family']] }}"
+    state: "{{ ntp_service_state }}"
+    enabled: "{{ ntp_service_enabled | bool }}"
+  when: not ntp_use_systemd_timesyncd_fallback | bool
+  tags: [security, ntp]
+
+- name: Ensure chrony is removed/masked when using the timesyncd fallback
+  ansible.builtin.service:
+    name: "{{ chrony_service_name[ansible_facts['os_family']] }}"
+    state: stopped
+    enabled: false
+  when: ntp_use_systemd_timesyncd_fallback | bool
+  failed_when: false
+  tags: [security, ntp]
+
+- name: Ensure systemd-timesyncd package is installed (lightweight fallback)
+  ansible.builtin.package:
+    name: "{{ timesyncd_package_name[ansible_facts['os_family']] }}"
+    state: present
+  when: ntp_use_systemd_timesyncd_fallback | bool
+  tags: [security, ntp]
+
+- name: Deploy timesyncd.conf from template (lightweight fallback)
+  ansible.builtin.template:
+    src: timesyncd.conf.j2
+    dest: "{{ timesyncd_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: ntp_use_systemd_timesyncd_fallback | bool
+  notify: Restart systemd-timesyncd
+  tags: [security, ntp]
+
+- name: Ensure systemd-timesyncd service is enabled and running (lightweight fallback)
+  ansible.builtin.service:
+    name: "{{ timesyncd_service_name[ansible_facts['os_family']] }}"
+    state: "{{ ntp_service_state }}"
+    enabled: "{{ ntp_service_enabled | bool }}"
+  when: ntp_use_systemd_timesyncd_fallback | bool
+  tags: [security, ntp]

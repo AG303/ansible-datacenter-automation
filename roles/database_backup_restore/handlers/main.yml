@@ -1,0 +1,9 @@
+---
+# roles/database_backup_restore/handlers/main.yml
+# No service reload is required for dump/restore operations; retained for
+# convention consistency and future extension (e.g. app service restart
+# after a restore completes).
+- name: Noop database backup handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for database_backup_restore"
+  listen: "Restart dependent application"

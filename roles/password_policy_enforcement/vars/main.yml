@@ -1,0 +1,20 @@
+---
+# roles/password_policy_enforcement/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+pwquality_package_name:
+  RedHat: libpwquality
+  Debian: libpam-pwquality
+
+pwquality_conf_path:
+  RedHat: /etc/security/pwquality.conf
+  Debian: /etc/security/pwquality.conf
+
+pam_password_auth_file:
+  RedHat: /etc/pam.d/system-auth
+  Debian: /etc/pam.d/common-password
+
+pam_auth_file:
+  RedHat: /etc/pam.d/password-auth
+  Debian: /etc/pam.d/common-auth

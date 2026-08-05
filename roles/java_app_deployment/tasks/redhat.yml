@@ -1,0 +1,10 @@
+---
+# roles/java_app_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Open application port in firewalld
+  ansible.posix.firewalld:
+    port: "{{ (tomcat_http_port if app_type == 'tomcat' else app_port) }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: ansible_facts.services['firewalld.service'] is defined
+  tags: [deploy, java]

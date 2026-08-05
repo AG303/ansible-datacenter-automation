@@ -1,0 +1,41 @@
+{{ ansible_managed | comment }}
+# Managed by the nginx_deployment Ansible role — do not edit by hand.
+# Vhost: {{ item.name }}
+
+server {
+    listen {{ item.listen_port | default(80) }};
+{% if item.tls_enabled | default(false) %}
+    listen {{ item.tls_port | default(443) }} ssl;
+    ssl_certificate     {{ item.tls_cert_path | default(nginx_certificate_management_output_dir + '/' + item.name + '.crt') }};
+    ssl_certificate_key {{ item.tls_key_path | default(nginx_certificate_management_output_dir + '/' + item.name + '.key') }};
+    ssl_protocols {{ nginx_tls_protocols }};
+    ssl_ciphers {{ nginx_tls_ciphers }};
+{% endif %}
+    server_name {{ item.server_name }};
+
+    access_log {{ nginx_access_log }};
+    error_log  {{ nginx_error_log }};
+
+{% if item.proxy_pass is defined %}
+    location / {
+        proxy_pass {{ item.proxy_pass }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+{% else %}
+    root {{ item.root | default('/var/www/' + item.name) }};
+    index index.html index.htm;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{% endif %}
+{% for loc in item.extra_locations | default([]) %}
+
+    location {{ loc.path }} {
+        {{ loc.config }}
+    }
+{% endfor %}
+}

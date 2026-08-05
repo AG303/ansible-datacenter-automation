@@ -1,0 +1,16 @@
+---
+# roles/backup_restic_orchestration/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+restic_package_name:
+  RedHat: restic
+  Debian: restic
+
+restic_dependency_packages:
+  RedHat:
+    - bzip2
+    - ca-certificates
+  Debian:
+    - bzip2
+    - ca-certificates

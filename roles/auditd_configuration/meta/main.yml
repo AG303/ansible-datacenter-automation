@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: auditd_configuration
+  author: DevOps Automation Collection
+  description: Installs and configures auditd with a curated rule set (identity, privilege escalation, network config, cron, sudoers, log-file watches), log rotation, and remote syslog forwarding.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - auditd
+    - logging
+dependencies: []

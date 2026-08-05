@@ -1,0 +1,8 @@
+---
+# roles/compliance_scan_reporting/handlers/main.yml
+# This role runs a one-shot scan and report push; there is no long-running
+# service to notify/restart. Kept as a placeholder for consistency and for
+# any future daemonized scan-scheduler component.
+- name: No-op reload placeholder
+  ansible.builtin.debug:
+    msg: "compliance_scan_reporting has no managed service to reload."

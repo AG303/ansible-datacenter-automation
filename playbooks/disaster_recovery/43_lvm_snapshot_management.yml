@@ -1,0 +1,9 @@
+---
+- name: Manage LVM snapshots (create, remove, or revert) before risky changes
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: lvm_snapshot_management
+  tags: [dr, lvm]

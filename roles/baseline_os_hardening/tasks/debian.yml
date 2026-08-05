@@ -1,0 +1,10 @@
+---
+# roles/baseline_os_hardening/tasks/debian.yml — Debian-family specific adjustments
+- name: Ensure needrestart does not block automated package removals interactively
+  ansible.builtin.lineinfile:
+    path: /etc/needrestart/needrestart.conf
+    regexp: "^#?\\$nrconf\\{restart\\}"
+    line: "$nrconf{restart} = 'a';"
+    create: false
+  failed_when: false
+  tags: [security, baseline]

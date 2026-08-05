@@ -1,0 +1,14 @@
+{{ ansible_managed | comment(decoration='# ') }}
+# Managed by the redis_deployment Ansible role — do not edit by hand.
+# Only rendered when redis_sentinel_enabled: true
+
+port {{ redis_sentinel_port }}
+dir /tmp
+
+sentinel monitor {{ redis_sentinel_monitor_name }} {{ redis_master_host }} {{ redis_port }} {{ redis_sentinel_quorum }}
+sentinel auth-pass {{ redis_sentinel_monitor_name }} {{ redis_requirepass }}
+sentinel down-after-milliseconds {{ redis_sentinel_monitor_name }} {{ redis_sentinel_down_after_milliseconds }}
+sentinel failover-timeout {{ redis_sentinel_monitor_name }} {{ redis_sentinel_failover_timeout }}
+sentinel parallel-syncs {{ redis_sentinel_monitor_name }} {{ redis_sentinel_parallel_syncs }}
+
+logfile /var/log/redis/sentinel.log

@@ -1,0 +1,160 @@
+---
+# roles/etcd_cluster_backup_restore/tasks/restore.yml — guarded, manual-confirmation etcd DR restore
+- name: Require explicit confirmation before restoring etcd cluster state
+  ansible.builtin.assert:
+    that:
+      - etcd_restore_confirm | bool
+    fail_msg: >-
+      Refusing to restore: set etcd_restore_confirm=true explicitly to confirm this
+      destructive control-plane recovery action on {{ inventory_hostname }}.
+  tags: [dr, etcd]
+
+- name: Pause for operator confirmation before destructive etcd restore
+  ansible.builtin.pause:
+    prompt: >-
+      DESTRUCTIVE ACTION: about to restore etcd cluster state on {{ inventory_hostname }}
+      from {{ etcd_restore_source_file if etcd_restore_source_file else 'the latest available snapshot' }}
+      into a NEW data dir ({{ etcd_restore_new_data_dir }}). This is a control-plane recovery
+      operation and should only proceed after confirming quorum loss / data corruption with the
+      on-call SRE lead. Press Enter to continue or Ctrl+C then A to abort.
+  tags: [dr, etcd]
+
+- name: List available S3 snapshots to find the latest object
+  amazon.aws.s3_object:
+    bucket: "{{ etcd_backup_s3_bucket }}"
+    prefix: "{{ etcd_backup_s3_prefix }}/"
+    mode: list
+    region: "{{ aws_region }}"
+  register: etcd_s3_listing
+  when:
+    - etcd_backup_destination_type == 's3'
+    - etcd_restore_source_file | length == 0
+  tags: [dr, etcd]
+
+- name: Determine latest S3 snapshot object key
+  ansible.builtin.set_fact:
+    etcd_restore_source_key: "{{ (etcd_s3_listing.s3_keys | sort | last) }}"
+  when:
+    - etcd_backup_destination_type == 's3'
+    - etcd_restore_source_file | length == 0
+  tags: [dr, etcd]
+
+- name: Use explicitly named S3 snapshot object key
+  ansible.builtin.set_fact:
+    etcd_restore_source_key: "{{ etcd_backup_s3_prefix }}/{{ etcd_restore_source_file }}"
+  when:
+    - etcd_backup_destination_type == 's3'
+    - etcd_restore_source_file | length > 0
+  tags: [dr, etcd]
+
+- name: Download snapshot from S3 for restore
+  amazon.aws.s3_object:
+    bucket: "{{ etcd_backup_s3_bucket }}"
+    object: "{{ etcd_restore_source_key }}"
+    dest: "{{ etcd_snapshot_dir }}/restore-source.db"
+    mode: get
+    region: "{{ aws_region }}"
+  when: etcd_backup_destination_type == 's3'
+  tags: [dr, etcd]
+
+- name: Find latest snapshot on NFS backup destination
+  ansible.builtin.find:
+    paths: "{{ etcd_backup_nfs_path }}"
+    patterns: "etcd-snapshot-*.db"
+  register: etcd_nfs_listing
+  when:
+    - etcd_backup_destination_type == 'nfs'
+    - etcd_restore_source_file | length == 0
+  tags: [dr, etcd]
+
+- name: Copy latest NFS snapshot into local staging for restore
+  ansible.builtin.copy:
+    src: "{{ (etcd_nfs_listing.files | sort(attribute='mtime') | last).path }}"
+    dest: "{{ etcd_snapshot_dir }}/restore-source.db"
+    remote_src: true
+    mode: "0600"
+  when:
+    - etcd_backup_destination_type == 'nfs'
+    - etcd_restore_source_file | length == 0
+  tags: [dr, etcd]
+
+- name: Copy named NFS snapshot into local staging for restore
+  ansible.builtin.copy:
+    src: "{{ etcd_backup_nfs_path }}/{{ etcd_restore_source_file }}"
+    dest: "{{ etcd_snapshot_dir }}/restore-source.db"
+    remote_src: true
+    mode: "0600"
+  when:
+    - etcd_backup_destination_type == 'nfs'
+    - etcd_restore_source_file | length > 0
+  tags: [dr, etcd]
+
+- name: Stop etcd service before restore
+  ansible.builtin.service:
+    name: "{{ etcd_service_name }}"
+    state: stopped
+  when: etcd_stop_service_before_restore | bool
+  tags: [dr, etcd]
+
+- name: Remove any stale restore target data directory
+  ansible.builtin.file:
+    path: "{{ etcd_restore_new_data_dir }}"
+    state: absent
+  tags: [dr, etcd]
+
+- name: Restore etcd snapshot into a new data directory
+  ansible.builtin.command:
+    cmd: >-
+      {{ etcd_binary_path }} snapshot restore {{ etcd_snapshot_dir }}/restore-source.db
+      --name {{ inventory_hostname }}
+      --initial-cluster {{ etcd_restore_initial_cluster }}
+      --initial-cluster-token {{ etcd_restore_cluster_name }}
+      --initial-advertise-peer-urls {{ etcd_restore_initial_advertise_peer_urls }}
+      --data-dir {{ etcd_restore_new_data_dir }}
+  environment:
+    ETCDCTL_API: "{{ etcd_api_version }}"
+  register: etcd_restore_result
+  changed_when: etcd_restore_result.rc == 0
+  tags: [dr, etcd]
+
+- name: Move restored data directory into place of the live etcd data dir
+  ansible.builtin.command:
+    cmd: "mv {{ etcd_restore_new_data_dir }} {{ etcd_restore_data_dir }}"
+  args:
+    removes: "{{ etcd_restore_new_data_dir }}"
+    creates: "{{ etcd_restore_data_dir }}"
+  tags: [dr, etcd]
+
+- name: Start etcd service after restore
+  ansible.builtin.service:
+    name: "{{ etcd_service_name }}"
+    state: started
+    enabled: true
+  tags: [dr, etcd]
+
+- name: Wait for etcd to report healthy after restore
+  ansible.builtin.command:
+    cmd: "{{ etcd_binary_path }} endpoint health"
+  environment:
+    ETCDCTL_API: "{{ etcd_api_version }}"
+    ETCDCTL_ENDPOINTS: "{{ etcd_endpoints }}"
+    ETCDCTL_CACERT: "{{ etcd_ca_file }}"
+    ETCDCTL_CERT: "{{ etcd_cert_file }}"
+    ETCDCTL_KEY: "{{ etcd_key_file }}"
+  register: etcd_health_check
+  retries: 10
+  delay: 6
+  until: etcd_health_check.rc == 0
+  changed_when: false
+  tags: [dr, etcd]
+
+- name: Notify restore completion
+  ansible.builtin.uri:
+    url: "{{ etcd_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "etcd cluster RESTORE completed on {{ inventory_hostname }}"
+    status_code: [200, 201, 204]
+  when: etcd_notify_webhook_url | length > 0
+  tags: [dr, etcd]

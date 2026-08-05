@@ -1,0 +1,5 @@
+---
+# roles/blue_green_deployment/handlers/main.yml
+# This orchestration role has no handlers of its own — service reload/restart
+# handlers belong to the app_deploy_role and load-balancer role it includes,
+# which notify their own handlers independently.

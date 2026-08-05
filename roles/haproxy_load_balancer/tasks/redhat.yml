@@ -1,0 +1,27 @@
+---
+# roles/haproxy_load_balancer/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Open frontend and stats ports in firewalld
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: >-
+    {{ (haproxy_backends | map(attribute='frontend_bind') | map('regex_replace', '^.*:', '') | list)
+       + ([haproxy_stats_port | string] if haproxy_stats_enabled else []) }}
+  loop_control:
+    label: "{{ item }}/tcp"
+  when: ansible_facts.services['firewalld.service'] is defined
+  vars:
+    ansible_loop_var: item
+  tags: [deploy, haproxy]
+
+- name: Ensure SELinux allows haproxy to bind non-standard ports (haproxy_connect_any)
+  ansible.posix.seboolean:
+    name: haproxy_connect_any
+    state: true
+    persistent: true
+  when:
+    - ansible_facts['selinux']['status'] is defined
+    - ansible_facts['selinux']['status'] == 'enabled'
+  tags: [deploy, haproxy]

@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: dr_runbook_execution
+  author: DevOps Automation Collection
+  description: Top-level DR orchestration — chains health check, state snapshot, failover, post-failover verification, and notification behind a single test|execute switch with explicit pause gates before any destructive step.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - runbook
+dependencies: []

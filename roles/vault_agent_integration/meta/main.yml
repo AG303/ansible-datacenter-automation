@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: vault_agent_integration
+  author: DevOps Automation Collection
+  description: Installs and configures the HashiCorp Vault Agent as a systemd service (AppRole auth, auto-renew, template rendering), with an alternate lightweight AWS Secrets Manager scheduled-lookup mode.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - vaultagent
+    - secretsmanagement
+dependencies: []

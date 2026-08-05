@@ -1,0 +1,199 @@
+---
+# roles/replication_health_check/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "replication_health_check supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, replication]
+
+- name: Resolve database credential from HashiCorp Vault
+  ansible.builtin.set_fact:
+    replication_db_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                                   engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+  no_log: true
+  when:
+    - replication_check_database | bool
+    - replication_credential_source == 'vault'
+  tags: [dr, replication]
+
+- name: Resolve database credential from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    replication_db_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  no_log: true
+  when:
+    - replication_check_database | bool
+    - replication_credential_source == 'aws_secrets_manager'
+  tags: [dr, replication]
+
+- name: Install database client tools
+  ansible.builtin.package:
+    name: "{{ replication_client_package_name[replication_db_engine][ansible_facts['os_family']] }}"
+    state: present
+  when: replication_check_database | bool
+  tags: [dr, replication]
+
+- name: Ensure report directory exists
+  ansible.builtin.file:
+    path: "{{ replication_report_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [dr, replication]
+
+- name: Check MySQL replica status
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    mysql --host={{ replication_db_host }} --port={{ replication_db_port }}
+    --user={{ replication_db_user }} --password={{ replication_db_password }}
+    --batch --raw -e "SHOW REPLICA STATUS\G"
+  args:
+    executable: /bin/bash
+  register: replication_mysql_status
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - replication_check_database | bool
+    - replication_db_engine == 'mysql'
+  tags: [dr, replication]
+
+- name: Parse MySQL replica lag from status output
+  ansible.builtin.set_fact:
+    replication_lag_seconds: "{{ (replication_mysql_status.stdout | regex_search('Seconds_Behind_Source:\\s*(\\d+)', '\\1') | first | default(999999)) | int }}"
+  when:
+    - replication_check_database | bool
+    - replication_db_engine == 'mysql'
+    - replication_mysql_status.rc == 0
+  tags: [dr, replication]
+
+- name: Check PostgreSQL replication status
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    PGPASSWORD={{ replication_db_password }} psql --host={{ replication_db_host }}
+    --port={{ replication_db_port }} --username={{ replication_db_user }} --tuples-only --no-align
+    -c "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int, 0);"
+  args:
+    executable: /bin/bash
+  register: replication_pg_status
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - replication_check_database | bool
+    - replication_db_engine == 'postgresql'
+  tags: [dr, replication]
+
+- name: Parse PostgreSQL replication lag from query output
+  ansible.builtin.set_fact:
+    replication_lag_seconds: "{{ (replication_pg_status.stdout | trim) | int }}"
+  when:
+    - replication_check_database | bool
+    - replication_db_engine == 'postgresql'
+    - replication_pg_status.rc == 0
+  tags: [dr, replication]
+
+- name: Evaluate database replication lag pass/fail
+  ansible.builtin.set_fact:
+    replication_db_lag_pass: "{{ (replication_lag_seconds | default(999999) | int) <= (replication_lag_warning_seconds | int) }}"
+  when: replication_check_database | bool
+  tags: [dr, replication]
+
+- name: Stat the primary filesystem replication source path
+  ansible.builtin.stat:
+    path: "{{ replication_fs_primary_path }}"
+  register: replication_fs_primary_stat
+  when: replication_check_filesystem | bool
+  tags: [dr, replication]
+
+- name: Find the most recently modified file under the primary path
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    find {{ replication_fs_primary_path }} -type f -printf '%T@\n' | sort -n | tail -1
+  args:
+    executable: /bin/bash
+  register: replication_fs_primary_latest
+  changed_when: false
+  failed_when: false
+  when: replication_check_filesystem | bool
+  tags: [dr, replication]
+
+- name: Find the most recently modified file under the mirror path on the DR site
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    find {{ replication_fs_mirror_path }} -type f -printf '%T@\n' | sort -n | tail -1
+  args:
+    executable: /bin/bash
+  register: replication_fs_mirror_latest
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ groups[replication_fs_mirror_hosts_group][0] }}"
+  when: replication_check_filesystem | bool
+  tags: [dr, replication]
+
+- name: Compute filesystem mirror staleness in seconds
+  ansible.builtin.set_fact:
+    replication_fs_staleness_seconds: >-
+      {{ ((replication_fs_primary_latest.stdout | default('0') | float) -
+      (replication_fs_mirror_latest.stdout | default('0') | float)) | abs | round(0) | int }}
+  when:
+    - replication_check_filesystem | bool
+    - replication_fs_primary_latest.stdout | default('') | length > 0
+    - replication_fs_mirror_latest.stdout | default('') | length > 0
+  tags: [dr, replication]
+
+- name: Evaluate filesystem replication staleness pass/fail
+  ansible.builtin.set_fact:
+    replication_fs_pass: "{{ (replication_fs_staleness_seconds | default(999999) | int) <= (replication_fs_max_staleness_seconds | int) }}"
+  when: replication_check_filesystem | bool
+  tags: [dr, replication]
+
+- name: Compile replication health report
+  ansible.builtin.set_fact:
+    replication_health_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      database:
+        engine: "{{ replication_db_engine if replication_check_database else omit }}"
+        lag_seconds: "{{ replication_lag_seconds | default(omit) }}"
+        pass: "{{ replication_db_lag_pass | default(omit) }}"
+      filesystem:
+        staleness_seconds: "{{ replication_fs_staleness_seconds | default(omit) }}"
+        pass: "{{ replication_fs_pass | default(omit) }}"
+  tags: [dr, replication]
+
+- name: Write replication health report to disk
+  ansible.builtin.copy:
+    content: "{{ replication_health_report | to_nice_json }}\n"
+    dest: "{{ replication_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, replication]
+
+- name: Alert if replication lag or staleness exceeds threshold
+  ansible.builtin.uri:
+    url: "{{ replication_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: >-
+        Replication health ALERT on {{ inventory_hostname }}:
+        {{ replication_health_report }}
+    status_code: [200, 201, 204]
+  when:
+    - replication_notify_webhook_url | length > 0
+    - (replication_db_lag_pass is defined and not replication_db_lag_pass | bool) or
+      (replication_fs_pass is defined and not replication_fs_pass | bool)
+  tags: [dr, replication]
+
+- name: Fail the play if replication lag/staleness exceeds threshold
+  ansible.builtin.assert:
+    that:
+      - (replication_db_lag_pass | default(true)) | bool
+      - (replication_fs_pass | default(true)) | bool
+    fail_msg: "Replication health check FAILED on {{ inventory_hostname }}: {{ replication_health_report }}"
+    success_msg: "Replication health check PASSED on {{ inventory_hostname }}"
+  when: replication_fail_on_lag_exceeded | bool
+  tags: [dr, replication]

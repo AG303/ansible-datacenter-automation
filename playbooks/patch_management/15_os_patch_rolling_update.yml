@@ -1,0 +1,10 @@
+---
+- name: Roll out full OS package upgrades across the fleet
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  max_fail_percentage: "{{ max_fail_percentage | default(10) }}"
+  roles:
+    - role: os_patch_rolling_update
+  tags: [patch, os_patch_rolling_update]

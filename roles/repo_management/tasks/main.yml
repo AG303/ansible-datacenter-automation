@@ -1,0 +1,18 @@
+---
+# roles/repo_management/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "repo_management supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, repo_management]
+
+- name: Include RedHat-family repo management tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, repo_management]
+
+- name: Include Debian-family repo management tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, repo_management]

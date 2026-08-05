@@ -1,0 +1,143 @@
+---
+# roles/patch_inventory_facts/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "patch_inventory_facts supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, patch_inventory_facts]
+
+- name: Refresh apt package cache (Debian family only, read-only report)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+  changed_when: false
+  tags: [patch, patch_inventory_facts]
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+  when: patch_inventory_include_package_facts | bool
+  tags: [patch, patch_inventory_facts]
+
+- name: Check for available updates (dnf check-update)
+  ansible.builtin.command: dnf check-update
+  register: patch_inventory_redhat_check
+  changed_when: false
+  failed_when:
+    - patch_inventory_fail_on_check_error | bool
+    - patch_inventory_redhat_check.rc not in [0, 100]
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, patch_inventory_facts]
+
+- name: Check for available updates (apt list --upgradable)
+  ansible.builtin.command: apt list --upgradable
+  register: patch_inventory_debian_check
+  changed_when: false
+  failed_when:
+    - patch_inventory_fail_on_check_error | bool
+    - patch_inventory_debian_check.rc != 0
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, patch_inventory_facts]
+
+- name: Compute available-updates count (RedHat)
+  ansible.builtin.set_fact:
+    patch_inventory_available_updates: >-
+      {{ (patch_inventory_redhat_check.stdout_lines
+          | default([])
+          | reject('match', '^(Last metadata|$|Obsoleting|Security:)')
+          | list
+          | length) }}
+    patch_inventory_update_lines: "{{ patch_inventory_redhat_check.stdout_lines | default([]) }}"
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, patch_inventory_facts]
+
+- name: Compute available-updates count (Debian)
+  ansible.builtin.set_fact:
+    patch_inventory_available_updates: >-
+      {{ (patch_inventory_debian_check.stdout_lines
+          | default([])
+          | reject('match', '^Listing...')
+          | list
+          | length) }}
+    patch_inventory_update_lines: "{{ patch_inventory_debian_check.stdout_lines | default([]) | reject('match', '^Listing...') | list }}"
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, patch_inventory_facts]
+
+- name: Build per-host patch inventory fact
+  ansible.builtin.set_fact:
+    patch_inventory_host_summary:
+      hostname: "{{ inventory_hostname }}"
+      os_family: "{{ ansible_facts['os_family'] }}"
+      distribution: "{{ ansible_facts['distribution'] }}"
+      distribution_version: "{{ ansible_facts['distribution_version'] }}"
+      kernel: "{{ ansible_facts['kernel'] }}"
+      available_updates_count: "{{ patch_inventory_available_updates | int }}"
+      available_updates: "{{ patch_inventory_update_lines }}"
+      installed_package_count: "{{ ansible_facts.packages | default({}) | length }}"
+      checked_at: "{{ ansible_date_time.iso8601 }}"
+  tags: [patch, patch_inventory_facts]
+
+- name: Ensure local report directory exists on the control node
+  ansible.builtin.file:
+    path: "{{ patch_inventory_report_dir }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_inventory_facts]
+
+- name: Aggregate fleet-wide patch inventory summary and write JSON report
+  ansible.builtin.copy:
+    content: "{{ patch_inventory_fleet_summary | to_nice_json }}"
+    dest: "{{ patch_inventory_report_file }}"
+    mode: "0640"
+  vars:
+    patch_inventory_fleet_summary:
+      generated_at: "{{ ansible_date_time.iso8601 }}"
+      host_count: "{{ ansible_play_hosts_all | length }}"
+      hosts: >-
+        {{ ansible_play_hosts_all
+           | map('extract', hostvars, 'patch_inventory_host_summary')
+           | list }}
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_inventory_facts]
+
+- name: Write fleet-wide patch inventory summary as CSV
+  ansible.builtin.copy:
+    content: |
+      hostname,os_family,distribution,distribution_version,kernel,available_updates_count,installed_package_count,checked_at
+      {% for h in ansible_play_hosts_all %}
+      {% set s = hostvars[h]['patch_inventory_host_summary'] %}
+      {{ s.hostname }},{{ s.os_family }},{{ s.distribution }},{{ s.distribution_version }},{{ s.kernel }},{{ s.available_updates_count }},{{ s.installed_package_count }},{{ s.checked_at }}
+      {% endfor %}
+    dest: "{{ patch_inventory_report_csv_file }}"
+    mode: "0640"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: patch_inventory_write_csv | bool
+  tags: [patch, patch_inventory_facts]
+
+- name: Display per-host available update count
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} ({{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}):
+      {{ patch_inventory_available_updates }} update(s) available.
+  tags: [patch, patch_inventory_facts]
+
+- name: Report file locations
+  ansible.builtin.debug:
+    msg:
+      - "JSON report written to {{ patch_inventory_report_file }}"
+      - "CSV report written to {{ patch_inventory_report_csv_file }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_inventory_facts]

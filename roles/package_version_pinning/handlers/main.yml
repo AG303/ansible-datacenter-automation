@@ -1,0 +1,5 @@
+---
+# roles/package_version_pinning/handlers/main.yml
+# No handlers are required: pinning/holding a package version does not
+# itself require a service restart. Kept for structural consistency across
+# the collection.

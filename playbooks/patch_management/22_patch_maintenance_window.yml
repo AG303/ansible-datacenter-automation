@@ -1,0 +1,12 @@
+---
+- name: Verify the current time falls inside the approved maintenance window
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: patch_maintenance_window
+  tags: [patch, patch_maintenance_window]
+  # This playbook is meant to be included ahead of another patch playbook in
+  # a CI/CD pipeline step, or its role added to the `roles:` list of another
+  # wrapper playbook, guarding the subsequent role with:
+  #   when: patch_maintenance_window_open | bool

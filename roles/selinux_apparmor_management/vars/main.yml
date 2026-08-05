@@ -1,0 +1,10 @@
+---
+# roles/selinux_apparmor_management/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+mac_package_name:
+  RedHat: policycoreutils-python-utils
+  Debian: apparmor-utils
+
+apparmor_profiles_dir: /etc/apparmor.d

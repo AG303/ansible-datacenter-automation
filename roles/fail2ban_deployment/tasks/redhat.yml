@@ -1,0 +1,16 @@
+---
+# roles/fail2ban_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure EPEL is available for fail2ban (RHEL/Rocky/Alma only, CentOS Stream excluded)
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when:
+    - ansible_facts['distribution'] in ['RedHat', 'Rocky', 'AlmaLinux']
+  register: _epel_install
+  failed_when: false
+  tags: [security, fail2ban]
+
+- name: Ensure firewalld allow rule exists for fail2ban logging visibility (no-op placeholder for symmetry)
+  ansible.builtin.debug:
+    msg: "fail2ban manages bans via iptables/nftables/firewalld-rich-rules directly; no additional firewalld allow rule needed."
+  tags: [security, fail2ban]

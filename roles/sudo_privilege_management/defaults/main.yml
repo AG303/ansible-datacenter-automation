@@ -1,0 +1,46 @@
+---
+# roles/sudo_privilege_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Sudoers rule definitions ------------------------------------------
+# Each entry generates one file under sudo_sudoers_d_path. `principal_type`
+# selects whether `principal` is a user or a %group. `commands` is a list of
+# absolute command paths (or "ALL"); NOPASSWD controls password prompting.
+#
+# Example:
+# sudo_rules:
+#   - name: sre-team-full-access
+#     principal_type: group
+#     principal: sre
+#     commands: ["ALL"]
+#     nopasswd: false
+#     hosts: "ALL"
+#     runas: "ALL"
+#   - name: deploy-svc-restart-only
+#     principal_type: user
+#     principal: deploy
+#     commands:
+#       - /usr/bin/systemctl restart myapp
+#       - /usr/bin/systemctl status myapp
+#     nopasswd: true
+#     hosts: "ALL"
+#     runas: root
+sudo_rules: []
+
+# --- File placement ---------------------------------------------------------
+sudo_sudoers_d_path: /etc/sudoers.d
+sudo_file_mode: "0440"
+sudo_file_owner: root
+sudo_file_group: root
+
+# --- Validation / rollback safety -------------------------------------------
+sudo_validate_before_activation: true   # run `visudo -c` against the staged file before moving it into place
+sudo_backup_existing_files: true
+sudo_backup_dir: /var/backups/sudoers_d
+
+# --- Pruning ------------------------------------------------------------
+# When true, any file under sudo_sudoers_d_path that was previously deployed
+# by this role (tracked via a marker comment) but is no longer declared in
+# sudo_rules is removed on the next run.
+sudo_prune_unmanaged_files: false

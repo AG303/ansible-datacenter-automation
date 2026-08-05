@@ -1,0 +1,12 @@
+---
+# roles/user_account_management/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+user_sudoers_d_path:
+  RedHat: /etc/sudoers.d
+  Debian: /etc/sudoers.d
+
+user_password_lock_command:
+  RedHat: usermod --lock
+  Debian: usermod --lock

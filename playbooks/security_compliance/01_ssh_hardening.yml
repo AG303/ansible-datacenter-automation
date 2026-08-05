@@ -1,0 +1,8 @@
+---
+- name: Harden OpenSSH server configuration across the fleet
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: ssh_hardening
+  tags: [security, ssh]

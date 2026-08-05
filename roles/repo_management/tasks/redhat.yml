@@ -1,0 +1,29 @@
+---
+# roles/repo_management/tasks/redhat.yml — manage yum/dnf .repo files
+- name: Import GPG keys for RedHat-family repo definitions
+  ansible.builtin.rpm_key:
+    key: "{{ item.gpgkey }}"
+    state: present
+  loop: "{{ repo_definitions | selectattr('baseurl', 'search', '\\$releasever|/rhel/|/centos/|/rocky/|/alma/') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.gpgkey is defined and (item.gpgcheck | default(true))
+  notify: Clean dnf metadata cache
+  tags: [patch, repo_management]
+
+- name: Deploy .repo files for RedHat-family repo definitions
+  ansible.builtin.yum_repository:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(item.name) }}"
+    baseurl: "{{ item.baseurl }}"
+    gpgcheck: "{{ item.gpgcheck | default(true) }}"
+    gpgkey: "{{ item.gpgkey | default(omit) }}"
+    enabled: "{{ item.enabled | default(true) }}"
+    priority: "{{ item.priority | default(omit) }}"
+    file: "{{ item.name }}"
+    state: present
+  loop: "{{ repo_definitions | selectattr('baseurl', 'search', '\\$releasever|/rhel/|/centos/|/rocky/|/alma/') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Clean dnf metadata cache
+  tags: [patch, repo_management]

@@ -1,0 +1,53 @@
+---
+# Blue/green deployment orchestration. Three plays because a role cannot
+# re-target a different set of hosts than the play that includes it:
+#   1. localhost   -> resolve which color group is idle, register its hosts
+#                     into a dynamic group so play 2 can target them.
+#   2. idle color  -> actually deploy the requested app_deploy_role.
+#   3. localhost   -> health-check the idle color, gate for approval, flip
+#                     the load balancer, report completion.
+#
+# Required vars (set via -e, group_vars, or extra_vars file):
+#   blue_green_active_color: blue|green   (which color is live today)
+#   blue_green_color_groups: {blue: web_blue, green: web_green}  (inventory group per color)
+#   app_deploy_role: e.g. nginx_deployment, nodejs_app_deployment, java_app_deployment
+
+- name: Resolve idle color and register its hosts for targeting
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    blue_green_idle_color: "{{ 'green' if blue_green_active_color == 'blue' else 'blue' }}"
+  tasks:
+    - name: Assert required blue/green inputs are present and valid
+      ansible.builtin.assert:
+        that:
+          - blue_green_active_color in ['blue', 'green']
+          - app_deploy_role is defined
+          - blue_green_color_groups is defined
+        fail_msg: "blue_green_active_color (blue|green), app_deploy_role, and blue_green_color_groups must be set."
+      tags: [deploy, blue_green]
+
+    - name: Register idle-color hosts into a dynamic targeting group
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: bg_idle_targets
+        blue_green_idle_color: "{{ blue_green_idle_color }}"
+      loop: "{{ groups[blue_green_color_groups[blue_green_idle_color]] | default([]) }}"
+      tags: [deploy, blue_green]
+
+- name: Deploy the application role onto the idle color's hosts
+  hosts: bg_idle_targets
+  become: true
+  gather_facts: true
+  roles:
+    - role: "{{ app_deploy_role }}"
+  tags: [deploy, blue_green]
+
+- name: Health-check, gate, and flip traffic to the newly-deployed color
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: blue_green_deployment
+  tags: [deploy, blue_green]

@@ -1,0 +1,48 @@
+---
+# roles/kubernetes_node_bootstrap/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Pinned versions (always pin in production; never float on "latest") ----
+kubernetes_version: "1.29.5"
+kubernetes_package_version_suffix: "1.29.5-1.1"   # exact pkg version string used for RedHat/Debian pinning
+containerd_package_state: present
+
+# --- Swap ---------------------------------------------------------------------
+kubernetes_disable_swap: true
+
+# --- Kernel modules required for container networking -------------------------
+kubernetes_kernel_modules:
+  - br_netfilter
+  - overlay
+
+# --- sysctl settings for bridged traffic visibility to iptables ---------------
+kubernetes_sysctl_settings:
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+  net.ipv4.ip_forward: 1
+
+# --- containerd tuning ----------------------------------------------------------
+kubernetes_containerd_config_path: /etc/containerd/config.toml
+kubernetes_containerd_use_systemd_cgroup: true
+
+# --- kubeadm join (out of scope by default; enable only when this node should
+# actually join a live cluster as part of this same play run) -------------------
+kubernetes_join_cluster_enabled: false
+kubernetes_join_command: ""          # full `kubeadm join ...` string, typically sourced from a control-plane fact or secrets manager
+kubernetes_join_discovery_token_ca_cert_hash: ""
+
+# --- Repository coordinates ------------------------------------------------------
+kubernetes_apt_repo_url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version.split('.')[0] }}.{{ kubernetes_version.split('.')[1] }}/deb/"
+kubernetes_yum_repo_url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version.split('.')[0] }}.{{ kubernetes_version.split('.')[1] }}/rpm/"
+
+# --- Secrets manager integration (join token / CA hash retrieval) ----------------
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/kubernetes/join/{{ inventory_hostname }}"
+# HashiCorp Vault example (populate kubernetes_join_command from a centrally-stored value):
+#   kubernetes_join_command: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                  engine_mount_point=vault_kv_mount, url=vault_addr).secret.join_command }}"
+# AWS Secrets Manager example:
+#   kubernetes_join_command: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

@@ -1,0 +1,60 @@
+---
+# roles/security_only_patching/tasks/main.yml
+# Applies only security-classified updates. Play-level serial/max_fail_percentage
+# are expected on the wrapper playbook, consistent with os_patch_rolling_update.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "security_only_patching supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, security_only_patching]
+
+- name: Pre-update health check — verify target service is active
+  ansible.builtin.systemd:
+    name: "{{ security_patch_health_check_service }}"
+  register: security_patch_pre_service_status
+  when: security_patch_pre_check_enabled | bool
+  tags: [patch, security_only_patching]
+
+- name: Fail fast if pre-update health check is not active
+  ansible.builtin.assert:
+    that:
+      - security_patch_pre_service_status.status.ActiveState == 'active'
+    fail_msg: >-
+      Pre-update health check failed for {{ security_patch_health_check_service }} on {{ inventory_hostname }};
+      refusing to patch a host that is already unhealthy.
+  when: security_patch_pre_check_enabled | bool
+  tags: [patch, security_only_patching]
+
+- name: Include RedHat-family security patching tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, security_only_patching]
+
+- name: Include Debian-family security patching tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, security_only_patching]
+
+- name: Wait for host connectivity to recover
+  ansible.builtin.wait_for_connection:
+    timeout: "{{ security_patch_wait_for_connection_timeout }}"
+    delay: "{{ security_patch_wait_for_connection_delay }}"
+  tags: [patch, security_only_patching]
+
+- name: Post-update health check — verify target service is active
+  ansible.builtin.systemd:
+    name: "{{ security_patch_health_check_service }}"
+  register: security_patch_post_service_status
+  when: security_patch_post_check_enabled | bool
+  tags: [patch, security_only_patching]
+
+- name: Fail this host if post-update health check did not pass
+  ansible.builtin.assert:
+    that:
+      - security_patch_post_service_status.status.ActiveState == 'active'
+    fail_msg: >-
+      Post-update health check FAILED for {{ security_patch_health_check_service }} on {{ inventory_hostname }}.
+      This host will count toward max_fail_percentage and may halt the rollout.
+  when: security_patch_post_check_enabled | bool
+  tags: [patch, security_only_patching]

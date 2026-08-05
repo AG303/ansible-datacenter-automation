@@ -1,0 +1,90 @@
+---
+# roles/dr_failover_orchestration/tasks/pre_promote.yml
+# Pre-flight checks, confirmation gate, health check, and (if selected) the
+# lightweight replica_command promotion path. Split out from main.yml so the
+# wrapper playbook can run this BEFORE a separate play performs a full
+# database_backup_restore-based promotion when dr_promotion_method == 'restore'
+# (see playbooks/disaster_recovery/42_dr_failover_orchestration.yml).
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "dr_failover_orchestration supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, failover]
+
+- name: Assert the DR site inventory group exists and is non-empty
+  ansible.builtin.assert:
+    that:
+      - dr_site_group in groups
+      - groups[dr_site_group] | length > 0
+    fail_msg: "dr_site_group '{{ dr_site_group }}' must exist in inventory and contain at least one host"
+  run_once: true
+  tags: [dr, failover]
+
+- name: Require explicit confirmation before initiating failover
+  ansible.builtin.assert:
+    that:
+      - dr_failover_confirm | bool
+    fail_msg: >-
+      Refusing to failover: set dr_failover_confirm=true explicitly to confirm this
+      destructive action promoting {{ dr_site_group }} to primary.
+  run_once: true
+  tags: [dr, failover]
+
+- name: Pause for operator confirmation before destructive failover
+  ansible.builtin.pause:
+    prompt: >-
+      DESTRUCTIVE ACTION: about to fail over production traffic to DR site group
+      '{{ dr_site_group }}'. This will promote a standby database and repoint
+      DNS/load-balancer configuration. Confirm this has been authorized by the
+      incident commander. Press Enter to continue or Ctrl+C then A to abort.
+  run_once: true
+  tags: [dr, failover]
+
+- name: Resolve DNS/API credential from HashiCorp Vault
+  ansible.builtin.set_fact:
+    dns_api_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                         engine_mount_point=vault_kv_mount, url=vault_addr).secret.dns_api_token }}"
+  no_log: true
+  when: dr_credential_source == 'vault'
+  tags: [dr, failover]
+
+- name: Resolve DNS/API credential from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    dns_api_token: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  no_log: true
+  when: dr_credential_source == 'aws_secrets_manager'
+  tags: [dr, failover]
+
+- name: Verify DR site health checks pass before failover
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    status_code: 200
+    timeout: "{{ dr_health_check_timeout_seconds }}"
+  loop: "{{ dr_health_check_urls }}"
+  register: dr_health_result
+  retries: "{{ dr_health_check_retries }}"
+  delay: "{{ dr_health_check_delay_seconds }}"
+  until: dr_health_result.status == 200
+  delegate_to: "{{ groups[dr_site_group][0] }}"
+  run_once: true
+  tags: [dr, failover]
+
+- name: Promote standby database via replica promotion command
+  ansible.builtin.command:
+    cmd: "{{ dr_replica_promote_command }}"
+  register: dr_promote_result
+  changed_when: dr_promote_result.rc == 0
+  when:
+    - dr_promote_database | bool
+    - dr_promotion_method == 'replica_command'
+  delegate_to: "{{ groups[dr_site_group][0] }}"
+  run_once: true
+  tags: [dr, failover]
+
+# NOTE: when dr_promotion_method == 'restore', promotion is NOT performed
+# here. A role cannot re-target a different host than the play that includes
+# it, and the database_backup_restore role must run directly against the DR
+# database host, not merely delegate_to from this play. The wrapper playbook
+# runs a dedicated middle play targeting the DR DB host directly for that case.

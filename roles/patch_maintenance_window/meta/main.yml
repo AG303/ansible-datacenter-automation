@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: patch_maintenance_window
+  author: DevOps Automation Collection
+  description: Orchestration role that checks the current time against a maintenance_window var (cron-like day/start/end) and exposes a patch_maintenance_window_open fact so downstream patch roles can skip cleanly outside the window.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - patch_maintenance_window
+    - orchestration
+dependencies: []

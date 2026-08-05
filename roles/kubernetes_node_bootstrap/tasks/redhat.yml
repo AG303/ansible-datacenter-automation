@@ -1,0 +1,43 @@
+---
+# roles/kubernetes_node_bootstrap/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Add Kubernetes yum repository
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: Kubernetes stable repository
+    baseurl: "{{ kubernetes_yum_repo_url }}"
+    gpgcheck: true
+    gpgkey: "{{ kubernetes_yum_repo_url }}repodata/repomd.xml.key"
+    enabled: true
+    exclude: "kubelet kubeadm kubectl"
+  tags: [deploy, kubernetes]
+
+- name: Add Docker CE repo for containerd.io package (RedHat ships containerd via Docker's repo)
+  ansible.builtin.yum_repository:
+    name: docker-ce-stable
+    description: Docker CE Stable - $basearch
+    baseurl: "https://download.docker.com/linux/{{ 'centos' if ansible_facts['distribution'] == 'CentOS' else 'rhel' }}/$releasever/$basearch/stable"
+    gpgcheck: true
+    gpgkey: "https://download.docker.com/linux/{{ 'centos' if ansible_facts['distribution'] == 'CentOS' else 'rhel' }}/gpg"
+    enabled: true
+  tags: [deploy, kubernetes]
+
+- name: Open Kubernetes required ports in firewalld (kubelet API, NodePort range)
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - "10250/tcp"
+    - "30000-32767/tcp"
+  when: ansible_facts.services['firewalld.service'] is defined
+  tags: [deploy, kubernetes]
+
+- name: Set SELinux to permissive for container workloads (per upstream kubeadm guidance)
+  ansible.posix.selinux:
+    state: permissive
+    policy: targeted
+  when:
+    - ansible_facts['selinux']['status'] is defined
+    - ansible_facts['selinux']['status'] == 'enabled'
+  tags: [deploy, kubernetes]

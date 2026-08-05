@@ -1,0 +1,51 @@
+---
+# roles/sudo_privilege_management/tasks/deploy_rule.yml
+# Included once per sudo_rules entry (rule). Renders to a staging file first,
+# validates with `visudo -c`, backs up any prior version, then activates.
+- name: "Backup existing sudoers.d file for {{ rule.name }} if present"
+  ansible.builtin.copy:
+    src: "{{ sudo_sudoers_d_path }}/{{ rule.name }}.conf"
+    dest: "{{ sudo_backup_dir }}/{{ rule.name }}.conf.bak-{{ ansible_date_time.iso8601_basic_short }}"
+    remote_src: true
+    mode: "0600"
+  when: sudo_backup_existing_files | bool
+  failed_when: false
+  changed_when: false
+  tags: [security, sudo]
+
+- name: "Render staged sudoers rule file for {{ rule.name }}"
+  ansible.builtin.template:
+    src: sudoers_rule.j2
+    dest: "/tmp/.sudo_rule_{{ rule.name }}.staged"
+    owner: root
+    group: root
+    mode: "0440"
+  vars:
+    rule_item: "{{ rule }}"
+  tags: [security, sudo]
+
+- name: "Validate staged sudoers rule for {{ rule.name }} with visudo -c"
+  ansible.builtin.command:
+    cmd: "{{ sudo_visudo_binary }} -c -f /tmp/.sudo_rule_{{ rule.name }}.staged"
+  register: _visudo_check
+  changed_when: false
+  failed_when: _visudo_check.rc != 0
+  when: sudo_validate_before_activation | bool
+  tags: [security, sudo]
+
+- name: "Activate validated sudoers rule for {{ rule.name }}"
+  ansible.builtin.copy:
+    src: "/tmp/.sudo_rule_{{ rule.name }}.staged"
+    dest: "{{ sudo_sudoers_d_path }}/{{ rule.name }}.conf"
+    remote_src: true
+    owner: "{{ sudo_file_owner }}"
+    group: "{{ sudo_file_group }}"
+    mode: "{{ sudo_file_mode }}"
+  tags: [security, sudo]
+
+- name: "Remove staged file for {{ rule.name }}"
+  ansible.builtin.file:
+    path: "/tmp/.sudo_rule_{{ rule.name }}.staged"
+    state: absent
+  changed_when: false
+  tags: [security, sudo]

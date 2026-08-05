@@ -1,0 +1,111 @@
+---
+# roles/postgresql_database_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "postgresql_database_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, postgresql]
+
+- name: Install python client library required by community.postgresql modules
+  ansible.builtin.package:
+    name: "{{ 'python3-psycopg2' if ansible_facts['os_family'] == 'RedHat' else 'python3-psycopg2' }}"
+    state: present
+  tags: [deploy, postgresql]
+
+- name: Include RedHat-specific tasks (PGDG repo, initdb)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, postgresql]
+
+- name: Include Debian-specific tasks (PGDG apt repo)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, postgresql]
+
+- name: Install PostgreSQL server package
+  ansible.builtin.package:
+    name: "{{ postgresql_packages[ansible_facts['os_family']] }}"
+    state: "{{ postgresql_package_state }}"
+  tags: [deploy, postgresql]
+
+- name: Ensure PostgreSQL service is started before initial configuration
+  ansible.builtin.service:
+    name: "{{ postgresql_service_name[ansible_facts['os_family']] }}"
+    state: started
+    enabled: true
+  tags: [deploy, postgresql]
+
+- name: Template postgresql.conf from vars
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "{{ postgresql_conf_path[ansible_facts['os_family']] }}"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart postgresql
+  tags: [deploy, postgresql]
+
+- name: Template pg_hba.conf from vars
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_hba_conf_path[ansible_facts['os_family']] }}"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Reload postgresql
+  tags: [deploy, postgresql]
+
+- name: Set postgres superuser password (idempotent, sourced from secrets manager)
+  community.postgresql.postgresql_user:
+    name: postgres
+    password: "{{ postgresql_superuser_password }}"
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  no_log: true
+  tags: [deploy, postgresql]
+
+- name: Create application roles with least-privilege attributes
+  community.postgresql.postgresql_user:
+    name: "{{ item.name }}"
+    password: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+           engine_mount_point=vault_kv_mount, url=vault_addr).secret[item.password_secret_field])
+         if postgresql_secrets_backend == 'hashi_vault'
+         else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json)[item.password_secret_field] }}
+    role_attr_flags: "{{ item.role_attr_flags | default('LOGIN') }}"
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  loop: "{{ postgresql_roles }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  tags: [deploy, postgresql]
+
+- name: Create application databases owned by their respective roles
+  community.postgresql.postgresql_db:
+    name: "{{ item.name }}"
+    owner: "{{ item.owner }}"
+    encoding: "{{ item.encoding | default('UTF8') }}"
+    state: present
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [deploy, postgresql]
+
+- name: Include streaming replication configuration (guarded, optional)
+  ansible.builtin.include_tasks: replication.yml
+  when: postgresql_replication_enabled | bool
+  tags: [deploy, postgresql]
+
+- name: Ensure PostgreSQL service is enabled and running
+  ansible.builtin.service:
+    name: "{{ postgresql_service_name[ansible_facts['os_family']] }}"
+    state: "{{ postgresql_service_state }}"
+    enabled: "{{ postgresql_service_enabled | bool }}"
+  tags: [deploy, postgresql]

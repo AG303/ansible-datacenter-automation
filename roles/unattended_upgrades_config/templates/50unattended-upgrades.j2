@@ -1,0 +1,39 @@
+{{ ansible_managed | comment }}
+// Managed by the unattended_upgrades_config Ansible role — do not edit by hand.
+// See: https://manpages.debian.org/unattended-upgrades
+
+Unattended-Upgrade::Origins-Pattern {
+{% for pattern in unattended_upgrades_origins_patterns %}
+    "{{ pattern }}";
+{% endfor %}
+{% if not auto_patch_apply_security_only %}
+    "origin=${distro_id},codename=${distro_codename}-updates";
+{% endif %}
+};
+
+Unattended-Upgrade::Package-Blacklist {
+};
+
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::InstallOnShutdown "false";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+Unattended-Upgrade::Automatic-Reboot "{{ 'true' if auto_patch_auto_reboot else 'false' }}";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ auto_patch_reboot_window_start }}";
+
+{% if auto_patch_notify_email %}
+Unattended-Upgrade::Mail "{{ auto_patch_notify_email }}";
+Unattended-Upgrade::MailReport "on-change";
+{% endif %}
+
+// Webhook notification of applied updates is handled by a post-invoke hook
+// script (see APT::Update::Post-Invoke-Success below) that POSTs a JSON
+// summary to auto_patch_notify_webhook_url — see the patch_notification_alerting
+// role for the fleet-wide aggregated equivalent driven from Ansible itself.
+{% if auto_patch_notify_webhook_url %}
+APT::Update::Post-Invoke-Success {"/usr/local/bin/patch-webhook-notify.sh || true";};
+{% endif %}

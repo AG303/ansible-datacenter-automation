@@ -1,0 +1,6 @@
+---
+# roles/auditd_configuration/handlers/main.yml
+- name: Restart auditd
+  ansible.builtin.service:
+    name: auditd
+    state: restarted

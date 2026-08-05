@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: docker_engine_setup
+  author: DevOps Automation Collection
+  description: Installs Docker Engine from the official upstream repo, configures daemon.json, and manages docker group membership.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - deploy
+    - docker
+    - containers
+dependencies: []

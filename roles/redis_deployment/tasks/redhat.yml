@@ -1,0 +1,32 @@
+---
+# roles/redis_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure EPEL is enabled (redis package source on some EL derivatives)
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: ansible_facts['distribution'] in ['CentOS', 'Rocky', 'AlmaLinux']
+  register: redis_epel_result
+  changed_when: redis_epel_result.changed
+  tags: [deploy, redis]
+
+- name: Open Redis port in firewalld (only when bind_address is not loopback)
+  ansible.posix.firewalld:
+    port: "{{ redis_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - redis_bind_address != '127.0.0.1'
+  tags: [deploy, redis]
+
+- name: Open Sentinel port in firewalld (guarded, optional HA setup)
+  ansible.posix.firewalld:
+    port: "{{ redis_sentinel_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - redis_sentinel_enabled | bool
+  tags: [deploy, redis]

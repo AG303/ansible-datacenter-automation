@@ -1,0 +1,101 @@
+---
+# roles/baseline_os_hardening/tasks/main.yml
+# General best-practice baseline hardening only — NOT mapped to CIS/STIG
+# control IDs.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "baseline_os_hardening supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, baseline]
+
+- name: Deploy modprobe blacklist for unused filesystem kernel modules
+  ansible.builtin.template:
+    src: modprobe_blacklist.conf.j2
+    dest: "{{ baseline_modprobe_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [security, baseline]
+
+- name: Ensure disabled filesystem modules are not currently loaded
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ baseline_disable_filesystems }}"
+  failed_when: false
+  tags: [security, baseline]
+
+- name: Deploy sysctl hardening settings
+  ansible.builtin.template:
+    src: sysctl_hardening.conf.j2
+    dest: "{{ baseline_sysctl_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sysctl
+  tags: [security, baseline]
+
+- name: Apply sysctl hardening settings immediately
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+    ignoreerrors: true
+  loop: "{{ (baseline_sysctl_settings | dict2items) + (baseline_router_sysctl_settings | dict2items if not baseline_is_router else []) }}"
+  loop_control:
+    label: "{{ item.key }}"
+  tags: [security, baseline]
+
+- name: Disable core dumps via limits.conf drop-in
+  ansible.builtin.template:
+    src: limits_hardening.conf.j2
+    dest: "{{ baseline_limits_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: baseline_disable_core_dumps | bool
+  tags: [security, baseline]
+
+- name: Disable systemd-coredump core pattern
+  ansible.posix.sysctl:
+    name: kernel.core_pattern
+    value: "|/bin/false"
+    sysctl_set: true
+    state: present
+    reload: true
+  when: baseline_disable_core_dumps | bool
+  tags: [security, baseline]
+
+- name: Include RedHat-specific tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [security, baseline]
+
+- name: Include Debian-specific tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [security, baseline]
+
+- name: Remove insecure/legacy packages if installed
+  ansible.builtin.package:
+    name: "{{ baseline_remove_insecure_packages }}"
+    state: absent
+  tags: [security, baseline]
+
+- name: Disable insecure legacy service sockets/units if present
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ baseline_disable_insecure_services }}"
+  when: ansible_facts.services[item] is defined
+  failed_when: false
+  tags: [security, baseline]
+
+- name: Harden /tmp mount options if /tmp is a separate mount point
+  ansible.builtin.include_tasks: harden_tmp.yml
+  when: baseline_harden_tmp_mount | bool
+  tags: [security, baseline]

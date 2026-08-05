@@ -1,0 +1,8 @@
+---
+- name: Run compliance hygiene scan and publish summary report
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: compliance_scan_reporting
+  tags: [security, compliance]

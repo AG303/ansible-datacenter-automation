@@ -1,0 +1,13 @@
+---
+# roles/vault_agent_integration/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+vault_agent_download_arch_package:
+  RedHat: unzip
+  Debian: unzip
+
+vault_agent_systemd_unit_path: /etc/systemd/system/vault-agent.service
+aws_lightweight_timer_unit_path: /etc/systemd/system/aws-secret-refresh.timer
+aws_lightweight_service_unit_path: /etc/systemd/system/aws-secret-refresh.service
+aws_lightweight_refresh_script_path: /usr/local/bin/aws-secret-refresh.sh

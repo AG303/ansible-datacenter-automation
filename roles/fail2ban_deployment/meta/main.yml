@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: fail2ban_deployment
+  author: DevOps Automation Collection
+  description: Installs and configures fail2ban with jails for sshd (and optionally nginx/apache), configurable ban/retry timing, and a trusted CIDR whitelist.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - fail2ban
+    - intrusion-prevention
+dependencies: []

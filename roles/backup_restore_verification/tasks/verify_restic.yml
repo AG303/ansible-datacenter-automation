@@ -1,0 +1,89 @@
+---
+# roles/backup_restore_verification/tasks/verify_restic.yml
+# Restores the latest restic snapshot into an isolated scratch directory and
+# checksum-compares a set of known files as a basic integrity proof.
+- name: Ensure restic restore target directory exists
+  ansible.builtin.file:
+    path: "{{ backup_verify_restic_restore_target }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, backupverify]
+
+- name: Restore the latest restic snapshot into the scratch directory
+  ansible.builtin.command:
+    cmd: >-
+      restic -r {{ backup_verify_restic_repository | default(restic_repository, true) }}
+      restore latest --target {{ backup_verify_restic_restore_target }}
+  environment:
+    RESTIC_PASSWORD: "{{ backup_verify_secret_value }}"
+  register: backup_verify_restic_restore_result
+  changed_when: true
+  no_log: true
+  tags: [dr, backupverify]
+
+- name: Compute checksums of restored files
+  ansible.builtin.stat:
+    path: "{{ backup_verify_restic_restore_target }}{{ item }}"
+    checksum_algorithm: sha256
+  loop: "{{ backup_verify_restic_checksum_paths }}"
+  loop_control:
+    label: "{{ item }}"
+  register: backup_verify_restored_checksums
+  tags: [dr, backupverify]
+
+- name: Compute checksums of the corresponding live source files
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop: "{{ backup_verify_restic_checksum_paths }}"
+  loop_control:
+    label: "{{ item }}"
+  register: backup_verify_live_checksums
+  tags: [dr, backupverify]
+
+- name: Evaluate checksum comparison pass/fail
+  ansible.builtin.set_fact:
+    backup_verify_pass: >-
+      {{ (backup_verify_restored_checksums.results | map(attribute='stat.checksum') | list) ==
+      (backup_verify_live_checksums.results | map(attribute='stat.checksum') | list) }}
+  tags: [dr, backupverify]
+
+- name: Compile restic restore verification report
+  ansible.builtin.set_fact:
+    backup_verify_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      source: restic
+      checked_paths: "{{ backup_verify_restic_checksum_paths }}"
+      pass: "{{ backup_verify_pass }}"
+  tags: [dr, backupverify]
+
+- name: Write verification report to disk
+  ansible.builtin.copy:
+    content: "{{ backup_verify_report | to_nice_json }}\n"
+    dest: "{{ backup_verify_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, backupverify]
+
+- name: Notify verification result
+  ansible.builtin.uri:
+    url: "{{ backup_verify_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "Backup restore verification (restic) on {{ inventory_hostname }}: pass={{ backup_verify_report.pass }}"
+    status_code: [200, 201, 204]
+  when: backup_verify_notify_webhook_url | length > 0
+  tags: [dr, backupverify]
+
+- name: Fail the play if restore verification did not pass
+  ansible.builtin.assert:
+    that:
+      - backup_verify_report.pass | bool
+    fail_msg: "Backup restore verification FAILED on {{ inventory_hostname }}: {{ backup_verify_report }}"
+    success_msg: "Backup restore verification PASSED on {{ inventory_hostname }}"
+  tags: [dr, backupverify]

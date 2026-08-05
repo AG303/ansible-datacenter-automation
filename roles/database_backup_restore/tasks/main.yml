@@ -1,0 +1,56 @@
+---
+# roles/database_backup_restore/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "database_backup_restore supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, dbbackup]
+
+- name: Assert db_backup_action and db_engine are valid
+  ansible.builtin.assert:
+    that:
+      - db_backup_action in ['backup', 'restore']
+      - db_engine in ['mysql', 'postgresql']
+    fail_msg: "db_backup_action must be backup|restore and db_engine must be mysql|postgresql"
+  tags: [dr, dbbackup]
+
+- name: Resolve database credential from HashiCorp Vault
+  ansible.builtin.set_fact:
+    db_admin_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                             engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+  no_log: true
+  when: db_credential_source == 'vault'
+  tags: [dr, dbbackup]
+
+- name: Resolve database credential from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    db_admin_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  no_log: true
+  when: db_credential_source == 'aws_secrets_manager'
+  tags: [dr, dbbackup]
+
+- name: Install database client tools
+  ansible.builtin.package:
+    name: "{{ db_client_package_name[db_engine][ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, dbbackup]
+
+- name: Ensure local dump staging directory exists
+  ansible.builtin.file:
+    path: "{{ db_dump_local_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, dbbackup]
+
+- name: Include backup workflow
+  ansible.builtin.include_tasks: backup.yml
+  when: db_backup_action == 'backup'
+  tags: [dr, dbbackup]
+
+- name: Include restore workflow
+  ansible.builtin.include_tasks: restore.yml
+  when: db_backup_action == 'restore'
+  tags: [dr, dbbackup]

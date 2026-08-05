@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: backup_restic_orchestration
+  author: DevOps Automation Collection
+  description: Installs restic, initializes/reuses an S3-compatible backup repository, runs scheduled backups with retention pruning and integrity checks.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - backup
+    - restic
+dependencies: []

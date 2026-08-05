@@ -1,0 +1,122 @@
+---
+# roles/patch_compliance_report/tasks/main.yml
+# Cross-references installed package versions against required_patch_baseline
+# and produces a fleet-wide compliance summary. No OS-branching task files are
+# needed — ansible.builtin.package_facts normalizes version reporting across
+# both RedHat and Debian families, so the comparison logic is identical.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "patch_compliance_report supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, patch_compliance_report]
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+  tags: [patch, patch_compliance_report]
+
+- name: Evaluate each baseline package for compliance on this host
+  ansible.builtin.set_fact:
+    patch_compliance_findings: "{{ patch_compliance_findings | default([]) + [_finding] }}"
+  vars:
+    _installed: "{{ ansible_facts.packages[item.key] | default([]) }}"
+    _installed_version: "{{ (_installed[0].version | default('')) if _installed | length > 0 else '' }}"
+    _is_installed: "{{ _installed | length > 0 }}"
+    _is_compliant: >-
+      {{ _is_installed and (_installed_version is version(item.value, '>=')) }}
+    _finding:
+      package: "{{ item.key }}"
+      required_min_version: "{{ item.value }}"
+      installed_version: "{{ _installed_version if _is_installed else 'not_installed' }}"
+      installed: "{{ _is_installed }}"
+      required: "{{ item.key in patch_baseline_required_packages }}"
+      compliant: >-
+        {{ true if (not _is_installed and item.key not in patch_baseline_required_packages)
+           else _is_compliant }}
+  loop: "{{ required_patch_baseline | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  tags: [patch, patch_compliance_report]
+
+- name: Determine overall host compliance status
+  ansible.builtin.set_fact:
+    patch_compliance_host_summary:
+      hostname: "{{ inventory_hostname }}"
+      os_family: "{{ ansible_facts['os_family'] }}"
+      distribution: "{{ ansible_facts['distribution'] }}"
+      distribution_version: "{{ ansible_facts['distribution_version'] }}"
+      compliant: "{{ patch_compliance_findings | selectattr('compliant', 'equalto', false) | list | length == 0 }}"
+      non_compliant_packages: "{{ patch_compliance_findings | rejectattr('compliant') | map(attribute='package') | list }}"
+      findings: "{{ patch_compliance_findings }}"
+      checked_at: "{{ ansible_date_time.iso8601 }}"
+  tags: [patch, patch_compliance_report]
+
+- name: Display host compliance status
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: compliant={{ patch_compliance_host_summary.compliant }}
+      {{ 'non-compliant packages: ' + (patch_compliance_host_summary.non_compliant_packages | join(', '))
+         if not patch_compliance_host_summary.compliant else '' }}
+  tags: [patch, patch_compliance_report]
+
+- name: Fail play for non-compliant hosts (strict mode)
+  ansible.builtin.assert:
+    that:
+      - patch_compliance_host_summary.compliant | bool
+    fail_msg: >-
+      {{ inventory_hostname }} is NON-COMPLIANT with required_patch_baseline:
+      {{ patch_compliance_host_summary.non_compliant_packages | join(', ') }}
+  when: patch_compliance_fail_play_on_noncompliance | bool
+  tags: [patch, patch_compliance_report]
+
+- name: Ensure local report directory exists on the control node
+  ansible.builtin.file:
+    path: "{{ patch_compliance_report_dir }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_compliance_report]
+
+- name: Write fleet-wide compliance summary as JSON
+  ansible.builtin.copy:
+    content: >-
+      {{ {
+        'generated_at': ansible_date_time.iso8601,
+        'host_count': ansible_play_hosts_all | length,
+        'compliant_count': (ansible_play_hosts_all | map('extract', hostvars, 'patch_compliance_host_summary') | selectattr('compliant') | list | length),
+        'hosts': (ansible_play_hosts_all | map('extract', hostvars, 'patch_compliance_host_summary') | list)
+      } | to_nice_json }}
+    dest: "{{ patch_compliance_report_json }}"
+    mode: "0640"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_compliance_report]
+
+- name: Write fleet-wide compliance summary as CSV
+  ansible.builtin.copy:
+    content: |
+      hostname,os_family,distribution,distribution_version,compliant,non_compliant_packages,checked_at
+      {% for h in ansible_play_hosts_all %}
+      {% set s = hostvars[h]['patch_compliance_host_summary'] %}
+      {{ s.hostname }},{{ s.os_family }},{{ s.distribution }},{{ s.distribution_version }},{{ s.compliant }},"{{ s.non_compliant_packages | join('; ') }}",{{ s.checked_at }}
+      {% endfor %}
+    dest: "{{ patch_compliance_report_csv }}"
+    mode: "0640"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_compliance_report]
+
+- name: Report file locations
+  ansible.builtin.debug:
+    msg:
+      - "JSON compliance report written to {{ patch_compliance_report_json }}"
+      - "CSV compliance report written to {{ patch_compliance_report_csv }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_compliance_report]

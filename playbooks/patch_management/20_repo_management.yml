@@ -1,0 +1,8 @@
+---
+- name: Manage yum/dnf and apt repository definitions fleet-wide
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: repo_management
+  tags: [patch, repo_management]

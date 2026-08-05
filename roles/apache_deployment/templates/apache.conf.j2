@@ -1,0 +1,26 @@
+{{ ansible_managed | comment }}
+# Managed by the apache_deployment Ansible role — do not edit by hand.
+
+ServerRoot "{{ '/etc/httpd' if ansible_facts['os_family'] == 'RedHat' else '/etc/apache2' }}"
+ServerAdmin {{ apache_server_admin }}
+Listen 80
+
+Timeout {{ apache_timeout }}
+KeepAlive {{ apache_keepalive }}
+MaxKeepAliveRequests {{ apache_max_keepalive_requests }}
+KeepAliveTimeout {{ apache_keepalive_timeout }}
+
+ServerTokens {{ apache_server_tokens }}
+ServerSignature {{ apache_server_signature }}
+
+ErrorLog "{{ apache_log_dir[ansible_facts['os_family']] }}/error_log"
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+CustomLog "{{ apache_log_dir[ansible_facts['os_family']] }}/access_log" combined
+
+{% if ansible_facts['os_family'] == 'RedHat' %}
+IncludeOptional conf.d/*.conf
+{% else %}
+IncludeOptional mods-enabled/*.load
+IncludeOptional mods-enabled/*.conf
+IncludeOptional sites-enabled/*.conf
+{% endif %}

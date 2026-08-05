@@ -1,0 +1,5 @@
+---
+# roles/security_only_patching/handlers/main.yml
+# No handlers are required: security package upgrades in this role do not
+# themselves restart services (that is the job of dedicated app/service
+# roles). Kept for structural consistency across the collection.

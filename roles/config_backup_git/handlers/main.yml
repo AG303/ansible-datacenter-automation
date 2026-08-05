@@ -1,0 +1,8 @@
+---
+# roles/config_backup_git/handlers/main.yml
+# No service reload is required for config snapshotting; retained for
+# convention consistency.
+- name: Noop config backup handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for config_backup_git"
+  listen: "Reindex config backup repo"

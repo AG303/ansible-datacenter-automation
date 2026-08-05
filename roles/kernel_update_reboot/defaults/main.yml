@@ -1,0 +1,32 @@
+---
+# roles/kernel_update_reboot/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Rollout safety ----------------------------------------------------------
+# NOTE: serial is set on the wrapper PLAY (default 1 — one host at a time),
+# because Ansible does not allow role-level serial. See
+# playbooks/patch_management/16_kernel_update_reboot.yml.
+kernel_reboot_serial: 1
+
+# --- Kernel update behaviour ---------------------------------------------------
+kernel_update_cache: true
+kernel_package_name_override: ""     # leave empty to use the OS-default meta-package name from vars/main.yml
+
+# --- Reboot behaviour ----------------------------------------------------------
+kernel_reboot_enabled: true                 # set false to only update the kernel package without rebooting (dry-run/staging)
+kernel_reboot_timeout: 600                  # seconds ansible.builtin.reboot will wait for the host to come back
+kernel_reboot_connect_timeout: 5
+kernel_reboot_post_reboot_delay: 30         # seconds to wait after connectivity returns before continuing
+kernel_reboot_pre_reboot_delay: 5
+kernel_reboot_test_command: "uptime"
+kernel_reboot_msg: "Reboot initiated by Ansible kernel_update_reboot role for kernel patching."
+
+# --- Approval gate between batches ---------------------------------------------
+kernel_reboot_pause_enabled: true
+kernel_reboot_pause_prompt: >-
+  Kernel updated and host rebooted successfully on this batch. Verify application
+  health before continuing. Press ENTER to proceed to the next batch, or Ctrl+C then A to abort.
+
+# --- Post-reboot health check ---------------------------------------------------
+kernel_reboot_health_check_service: "sshd"

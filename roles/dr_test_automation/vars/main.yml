@@ -1,0 +1,7 @@
+---
+# roles/dr_test_automation/vars/main.yml
+# OS-family specific facts for the dig/bind-utils package used for the DNS TTL check.
+
+dns_client_package_name:
+  RedHat: bind-utils
+  Debian: dnsutils

@@ -1,0 +1,22 @@
+---
+# roles/nodejs_app_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Install build dependencies
+  ansible.builtin.package:
+    name: "{{ nodejs_build_dependencies['RedHat'] }}"
+    state: present
+  tags: [deploy, nodejs]
+
+- name: Add NodeSource repository (RPM) when using the nodesource install method
+  ansible.builtin.shell: |
+    curl -fsSL {{ nodejs_nodesource_rpm_setup_script_url }} | bash -
+  args:
+    creates: /etc/yum.repos.d/nodesource-nodejs.repo
+  when: nodejs_install_method == 'nodesource'
+  tags: [deploy, nodejs]
+
+- name: Install Node.js package (nodesource method)
+  ansible.builtin.package:
+    name: "{{ nodejs_package_name['RedHat'] }}"
+    state: present
+  when: nodejs_install_method == 'nodesource'
+  tags: [deploy, nodejs]

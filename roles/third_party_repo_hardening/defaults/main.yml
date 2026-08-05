@@ -1,0 +1,25 @@
+---
+# roles/third_party_repo_hardening/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- EPEL (RedHat family) --------------------------------------------------------
+epel_install: true
+epel_enabled_by_default: false        # EPEL is installed disabled; only allow-listed repo IDs below are turned on
+epel_allowlisted_repo_ids: []         # e.g. ["epel"] to explicitly enable the base EPEL repo fleet-wide
+epel_priority: 10                     # lower number = higher priority; OS base repos should stay at priority 1-2 (see repo_management)
+
+# --- Third-party PPA-style repos (Debian family) ----------------------------------
+# Each entry: name, ppa (Ubuntu "ppa:owner/name" shorthand) OR baseurl/deb_suite/deb_components,
+# gpgkey, enabled, pin_priority.
+third_party_repos:
+  - name: docker-ce
+    baseurl: "https://download.docker.com/linux/ubuntu"
+    deb_suite: "{{ ansible_facts['distribution_release'] | default('jammy') }}"
+    deb_components: ["stable"]
+    gpgkey: "https://download.docker.com/linux/ubuntu/gpg"
+    enabled: true
+    pin_priority: 100    # below the default 500 so it never shadows OS base packages unless explicitly needed
+
+# --- yum-plugin-priorities (RedHat family) -----------------------------------------
+yum_priorities_plugin_install: true

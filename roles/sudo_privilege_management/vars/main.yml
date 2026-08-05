@@ -1,0 +1,8 @@
+---
+# roles/sudo_privilege_management/vars/main.yml
+# This role's file paths/behavior are identical across RedHat and Debian
+# families (both use /etc/sudoers.d and visudo), so no OS-family package/
+# service name maps are required. Kept for convention consistency and future
+# distro-specific overrides if ever needed.
+
+sudo_visudo_binary: /usr/sbin/visudo

@@ -1,0 +1,17 @@
+---
+# Runs the full Security & Compliance suite (items 01-13) in a safe order:
+# access/identity controls first, then network/intrusion controls, then
+# auditing/monitoring, then cert/secrets integration, then reporting.
+- ansible.builtin.import_playbook: security_compliance/01_ssh_hardening.yml
+- ansible.builtin.import_playbook: security_compliance/02_firewall_management.yml
+- ansible.builtin.import_playbook: security_compliance/03_user_account_management.yml
+- ansible.builtin.import_playbook: security_compliance/04_auditd_configuration.yml
+- ansible.builtin.import_playbook: security_compliance/05_selinux_apparmor_management.yml
+- ansible.builtin.import_playbook: security_compliance/06_fail2ban_deployment.yml
+- ansible.builtin.import_playbook: security_compliance/07_password_policy_enforcement.yml
+- ansible.builtin.import_playbook: security_compliance/08_ntp_time_sync.yml
+- ansible.builtin.import_playbook: security_compliance/09_baseline_os_hardening.yml
+- ansible.builtin.import_playbook: security_compliance/10_certificate_management.yml
+- ansible.builtin.import_playbook: security_compliance/11_vault_agent_integration.yml
+- ansible.builtin.import_playbook: security_compliance/12_compliance_scan_reporting.yml
+- ansible.builtin.import_playbook: security_compliance/13_sudo_privilege_management.yml

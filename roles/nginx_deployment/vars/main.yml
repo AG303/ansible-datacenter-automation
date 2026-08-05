@@ -1,0 +1,30 @@
+---
+# roles/nginx_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+nginx_package_name:
+  RedHat: nginx
+  Debian: nginx
+
+nginx_service_name:
+  RedHat: nginx
+  Debian: nginx
+
+nginx_conf_path:
+  RedHat: /etc/nginx/nginx.conf
+  Debian: /etc/nginx/nginx.conf
+
+# RedHat serves enabled vhosts straight from conf.d/*.conf (no symlink step).
+# Debian uses the classic sites-available / sites-enabled symlink pattern.
+nginx_vhost_dir:
+  RedHat: /etc/nginx/conf.d
+  Debian: /etc/nginx/sites-available
+
+nginx_vhost_enabled_dir:
+  RedHat: /etc/nginx/conf.d
+  Debian: /etc/nginx/sites-enabled
+
+nginx_default_vhost_file:
+  RedHat: /etc/nginx/conf.d/default.conf
+  Debian: /etc/nginx/sites-enabled/default

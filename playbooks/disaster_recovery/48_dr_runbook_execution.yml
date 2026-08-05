@@ -1,0 +1,9 @@
+---
+- name: Run the top-level DR runbook (test or execute mode)
+  hosts: "{{ target_hosts | default('dr_site') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default(1) }}"
+  roles:
+    - role: dr_runbook_execution
+  tags: [dr, runbook]

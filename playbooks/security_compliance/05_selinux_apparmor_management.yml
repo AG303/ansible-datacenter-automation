@@ -1,0 +1,8 @@
+---
+- name: Manage SELinux (RedHat) or AppArmor (Debian) mandatory access control
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: selinux_apparmor_management
+  tags: [security, mac]

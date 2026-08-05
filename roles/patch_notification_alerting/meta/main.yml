@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: patch_notification_alerting
+  author: DevOps Automation Collection
+  description: After a patch run, aggregates per-host results (packages updated, reboot required, success/fail) across ansible_play_hosts_all and POSTs a JSON summary to a configurable webhook (Slack/Teams/generic), run once at play end via delegate_to localhost.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - patch_notification_alerting
+    - notifications
+dependencies: []

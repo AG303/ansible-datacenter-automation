@@ -1,0 +1,11 @@
+---
+# roles/redis_deployment/handlers/main.yml
+- name: Restart redis
+  ansible.builtin.service:
+    name: "{{ redis_service_name[ansible_facts['os_family']] }}"
+    state: restarted
+
+- name: Restart sentinel
+  ansible.builtin.service:
+    name: "{{ redis_sentinel_service_name[ansible_facts['os_family']] }}"
+    state: restarted

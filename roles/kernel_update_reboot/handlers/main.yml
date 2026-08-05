@@ -1,0 +1,6 @@
+---
+# roles/kernel_update_reboot/handlers/main.yml
+# No handlers are required: the reboot itself is performed as an explicit
+# task (ansible.builtin.reboot) rather than a notify-driven handler, since
+# the role needs precise control over ordering (update -> detect -> reboot ->
+# verify). Kept for structural consistency across the collection.

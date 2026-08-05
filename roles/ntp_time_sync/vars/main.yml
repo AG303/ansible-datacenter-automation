@@ -1,0 +1,25 @@
+---
+# roles/ntp_time_sync/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+chrony_package_name:
+  RedHat: chrony
+  Debian: chrony
+
+chrony_service_name:
+  RedHat: chronyd
+  Debian: chrony
+
+chrony_conf_path:
+  RedHat: /etc/chrony.conf
+  Debian: /etc/chrony/chrony.conf
+
+timesyncd_package_name:
+  Debian: systemd-timesyncd
+
+timesyncd_service_name:
+  Debian: systemd-timesyncd
+
+timesyncd_conf_path:
+  Debian: /etc/systemd/timesyncd.conf

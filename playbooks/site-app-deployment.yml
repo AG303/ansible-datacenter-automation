@@ -1,0 +1,17 @@
+---
+# Runs the full Application Deployment suite (items 26-38). In practice you
+# would rarely run ALL of these against the same host group — this file is
+# a reference chain; scope with -e target_hosts=<group> and --tags per run.
+- ansible.builtin.import_playbook: app_deployment/28_docker_engine_setup.yml
+- ansible.builtin.import_playbook: app_deployment/29_kubernetes_node_bootstrap.yml
+- ansible.builtin.import_playbook: app_deployment/26_nginx_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/27_apache_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/35_haproxy_load_balancer.yml
+- ansible.builtin.import_playbook: app_deployment/32_mysql_database_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/33_postgresql_database_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/34_redis_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/37_systemd_service_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/30_nodejs_app_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/31_java_app_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/38_artifact_registry_deployment.yml
+- ansible.builtin.import_playbook: app_deployment/36_blue_green_deployment.yml

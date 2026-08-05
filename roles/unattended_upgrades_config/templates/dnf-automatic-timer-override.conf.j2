@@ -1,0 +1,7 @@
+{{ ansible_managed | comment }}
+# Managed by the unattended_upgrades_config Ansible role — do not edit by hand.
+[Timer]
+OnCalendar=
+OnCalendar={{ auto_patch_schedule_calendar }}
+Persistent=true
+RandomizedDelaySec=15min

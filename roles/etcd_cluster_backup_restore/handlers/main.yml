@@ -1,0 +1,6 @@
+---
+# roles/etcd_cluster_backup_restore/handlers/main.yml
+- name: Restart etcd
+  ansible.builtin.service:
+    name: "{{ etcd_service_name }}"
+    state: restarted

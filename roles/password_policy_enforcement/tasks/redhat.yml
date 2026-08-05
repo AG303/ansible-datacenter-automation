@@ -1,0 +1,55 @@
+---
+# roles/password_policy_enforcement/tasks/redhat.yml — PAM lockout/history via authselect-managed files
+- name: Configure pam_pwhistory remember count in system-auth
+  ansible.builtin.lineinfile:
+    path: "{{ pam_password_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^password\s+requisite\s+pam_pwhistory\.so'
+    line: "password    requisite     pam_pwhistory.so remember={{ password_history_remember }} use_authtok"
+    insertbefore: '^password\s+sufficient\s+pam_unix\.so'
+    backup: true
+  tags: [security, pwpolicy]
+
+- name: Configure pam_faillock preauth in password-auth
+  ansible.builtin.lineinfile:
+    path: "{{ pam_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^auth\s+required\s+pam_faillock\.so\s+preauth'
+    line: >-
+      auth        required      pam_faillock.so preauth silent
+      deny={{ password_lockout_attempts }} unlock_time={{ password_lockout_unlock_time }}
+      {{ 'even_deny_root' if password_lockout_even_deny_root else '' }}
+    insertbefore: '^auth\s+sufficient\s+pam_unix\.so'
+    backup: true
+  when: password_lockout_mechanism == 'pam_faillock'
+  tags: [security, pwpolicy]
+
+- name: Configure pam_faillock authfail in password-auth
+  ansible.builtin.lineinfile:
+    path: "{{ pam_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^auth\s+\[default=die\]\s+pam_faillock\.so\s+authfail'
+    line: >-
+      auth        [default=die] pam_faillock.so authfail
+      deny={{ password_lockout_attempts }} unlock_time={{ password_lockout_unlock_time }}
+      {{ 'even_deny_root' if password_lockout_even_deny_root else '' }}
+    insertafter: '^auth\s+sufficient\s+pam_unix\.so'
+    backup: true
+  when: password_lockout_mechanism == 'pam_faillock'
+  tags: [security, pwpolicy]
+
+- name: Configure pam_faillock account enforcement in system-auth
+  ansible.builtin.lineinfile:
+    path: "{{ pam_password_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^account\s+required\s+pam_faillock\.so'
+    line: "account     required      pam_faillock.so"
+    insertbefore: '^account\s+required\s+pam_unix\.so'
+    backup: true
+  when: password_lockout_mechanism == 'pam_faillock'
+  tags: [security, pwpolicy]
+
+- name: Notify operator that authselect may overwrite manual PAM edits
+  ansible.builtin.debug:
+    msg: >-
+      This host uses authselect-managed PAM stacks. If a custom authselect
+      profile is in use, prefer `authselect enable-feature with-faillock`
+      and re-run `authselect apply-changes` instead of direct file edits for
+      long-term consistency across authselect updates.
+  tags: [security, pwpolicy]

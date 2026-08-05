@@ -1,0 +1,54 @@
+---
+# roles/etcd_cluster_backup_restore/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Mode switch --------------------------------------------------------------
+etcd_action: snapshot                # snapshot | restore
+
+# --- etcdctl / cluster connection ----------------------------------------------
+etcd_endpoints: "https://127.0.0.1:2379"
+etcd_api_version: "3"
+etcd_cert_dir: /etc/kubernetes/pki/etcd
+etcd_ca_file: "{{ etcd_cert_dir }}/ca.crt"
+etcd_cert_file: "{{ etcd_cert_dir }}/server.crt"
+etcd_key_file: "{{ etcd_cert_dir }}/server.key"
+etcd_binary_path: /usr/local/bin/etcdctl
+
+# --- Snapshot output ------------------------------------------------------------
+etcd_snapshot_dir: /var/backups/etcd
+etcd_snapshot_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+etcd_snapshot_filename: "etcd-snapshot-{{ inventory_hostname }}-{{ etcd_snapshot_timestamp }}.db"
+etcd_snapshot_retention_days: 14
+
+# --- Backup destination (S3 or NFS path) ----------------------------------------
+etcd_backup_destination_type: s3      # s3 | nfs
+etcd_backup_s3_bucket: "dc-etcd-backups"
+etcd_backup_s3_prefix: "etcd/{{ inventory_hostname }}"
+etcd_backup_nfs_path: "/mnt/dr-backups/etcd/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+
+# --- Restore options (DESTRUCTIVE — guarded) -------------------------------------
+etcd_restore_confirm: false                       # must be explicitly true to allow restore
+etcd_restore_source_file: ""                       # explicit snapshot filename to restore; empty = latest
+etcd_restore_data_dir: /var/lib/etcd
+etcd_restore_new_data_dir: /var/lib/etcd-restored  # etcdctl writes the restored data dir here first
+etcd_restore_cluster_name: "etcd-restored-cluster"
+etcd_restore_initial_cluster: "{{ inventory_hostname }}=https://{{ ansible_default_ipv4.address | default('127.0.0.1') }}:2380"
+etcd_restore_initial_advertise_peer_urls: "https://{{ ansible_default_ipv4.address | default('127.0.0.1') }}:2380"
+etcd_stop_service_before_restore: true
+etcd_service_name: etcd
+
+# --- Secrets manager (only if etcdctl needs a client cert passphrase or token) ---
+etcd_credential_source: vault         # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/etcd/{{ inventory_hostname }}"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   etcd_client_cert_passphrase: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                     engine_mount_point=vault_kv_mount, url=vault_addr).secret.passphrase }}"
+# AWS Secrets Manager example:
+#   etcd_client_cert_passphrase: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Notification (optional) ------------------------------------------------------
+etcd_notify_webhook_url: ""

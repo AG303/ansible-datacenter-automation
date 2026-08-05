@@ -1,0 +1,26 @@
+---
+# roles/patch_rollback_snapshot/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Mode selector --------------------------------------------------------------
+# "snapshot"  -> record pre-patch state (package version fact file, optional LVM snapshot)
+# "rollback"  -> downgrade packages to the previously recorded fact file if a
+#                post-patch health check has failed
+patch_rollback_mode: "snapshot"
+
+# --- Fact-file recording (used in BOTH modes) ------------------------------------
+patch_rollback_state_dir: "/var/lib/ansible-patch-rollback"
+patch_rollback_state_file: "{{ patch_rollback_state_dir }}/package_versions_{{ inventory_hostname }}.json"
+patch_rollback_local_copy_dir: "/tmp/patch_reports/rollback_state"   # also copied back to the control node for durability
+
+# --- LVM snapshot (optional, RedHat/Debian both support LVM if the host uses it) --
+patch_rollback_lvm_enabled: false      # only enable on hosts whose root/var volumes are LVM-backed
+patch_rollback_lvm_vg: "vg_system"
+patch_rollback_lvm_lv: "lv_root"
+patch_rollback_lvm_snapshot_name: "{{ patch_rollback_lvm_lv }}_prepatch_{{ ansible_date_time.date | default('') }}"
+patch_rollback_lvm_snapshot_size: "5G"
+
+# --- Rollback health check + downgrade behaviour ----------------------------------
+patch_rollback_health_check_service: "sshd"
+patch_rollback_packages_scope: []      # empty = downgrade every package recorded in the fact file; or restrict to a list of package names

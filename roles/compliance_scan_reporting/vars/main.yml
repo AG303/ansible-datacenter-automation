@@ -1,0 +1,15 @@
+---
+# roles/compliance_scan_reporting/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+lynis_package_name:
+  RedHat: lynis
+  Debian: lynis
+
+openscap_package_name:
+  RedHat: openscap-scanner
+  Debian: libopenscap8
+
+lynis_binary_path: /usr/sbin/lynis
+oscap_binary_path: /usr/bin/oscap

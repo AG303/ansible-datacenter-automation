@@ -1,0 +1,21 @@
+{{ ansible_managed | comment }}
+# Managed by the nodejs_app_deployment Ansible role — do not edit by hand.
+
+[Unit]
+Description={{ app_name }} Node.js application
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_service_user }}
+Group={{ app_service_group }}
+WorkingDirectory={{ app_base_dir }}/current
+ExecStart={{ app_exec_start }}
+Restart=on-failure
+RestartSec=5
+{% for key, value in app_env_vars.items() %}
+Environment="{{ key }}={{ value }}"
+{% endfor %}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+---
+# roles/blue_green_deployment/tasks/flip_haproxy.yml
+# Re-renders the haproxy_load_balancer role's backend definition so that
+# `backend_group` for blue_green_backend_name now points at the idle
+# (newly-verified) color's inventory group, then reloads haproxy on every LB host.
+
+- name: Re-deploy haproxy_load_balancer with the backend pointed at the new color
+  ansible.builtin.include_role:
+    name: haproxy_load_balancer
+  delegate_to: "{{ item }}"
+  loop: "{{ groups[blue_green_lb_hosts] | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  vars:
+    haproxy_backends:
+      - name: "{{ blue_green_backend_name }}"
+        frontend_bind: "*:80"
+        backend_port: "{{ blue_green_backend_port }}"
+        backend_group: "{{ blue_green_idle_group }}"
+        balance_algorithm: roundrobin
+        health_check_path: "{{ blue_green_health_check_path }}"
+  tags: [deploy, blue_green]

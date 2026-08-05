@@ -1,0 +1,78 @@
+---
+# roles/firewall_management/tasks/redhat.yml — firewalld rule management
+- name: Set firewalld log-denied policy
+  ansible.posix.firewalld:
+    zone: "{{ firewall_default_zone }}"
+    state: enabled
+  ignore_errors: true # firewalld module has no direct log-denied param; handled via lineinfile below
+  changed_when: false
+  tags: [security, firewall]
+
+- name: Configure firewalld log-denied level
+  community.general.ini_file:
+    path: /etc/firewalld/firewalld.conf
+    section: null
+    option: LogDenied
+    value: "{{ 'all' if firewall_logging in ['on', 'full', 'high'] else 'off' }}"
+    no_extra_spaces: true
+    mode: "0644"
+    backup: true
+  notify: Reload firewalld
+  tags: [security, firewall]
+
+- name: Assign interfaces to firewalld zones
+  ansible.posix.firewalld:
+    zone: "{{ item.zone }}"
+    interface: "{{ item.interface }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewall_zone_interfaces }}"
+  loop_control:
+    label: "{{ item.interface }} -> {{ item.zone }}"
+  tags: [security, firewall]
+
+- name: Ensure default zone is set
+  ansible.builtin.command:
+    cmd: "firewall-cmd --set-default-zone={{ firewall_default_zone }}"
+  register: _firewalld_default_zone
+  changed_when: "'success' in _firewalld_default_zone.stdout"
+  tags: [security, firewall]
+
+- name: Open allow-listed service rules in firewalld
+  ansible.posix.firewalld:
+    zone: "{{ firewall_default_zone }}"
+    service: "{{ item.service }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewall_allowed_rules | selectattr('service', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name | default(item.service) }}"
+  tags: [security, firewall]
+
+- name: Open allow-listed port rules in firewalld (no source restriction)
+  ansible.posix.firewalld:
+    zone: "{{ firewall_default_zone }}"
+    port: "{{ item.port }}/{{ item.proto | default('tcp') }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewall_allowed_rules | selectattr('service', 'undefined') | rejectattr('source', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name | default(item.port) }}"
+  tags: [security, firewall]
+
+- name: Open allow-listed source-restricted rich rules in firewalld
+  ansible.posix.firewalld:
+    zone: "{{ firewall_default_zone }}"
+    rich_rule: >-
+      rule family="ipv4" source address="{{ item.source }}"
+      port port="{{ item.port }}" protocol="{{ item.proto | default('tcp') }}" accept
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewall_allowed_rules | selectattr('source', 'defined') | selectattr('source', '!=', '') | list }}"
+  loop_control:
+    label: "{{ item.name | default(item.port) }}"
+  tags: [security, firewall]

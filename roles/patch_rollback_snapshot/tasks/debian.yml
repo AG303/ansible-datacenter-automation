@@ -1,0 +1,52 @@
+---
+# roles/patch_rollback_snapshot/tasks/debian.yml — Debian-family LVM snapshot + downgrade
+- name: Take an LVM snapshot of the target logical volume before patching
+  community.general.lvol:
+    vg: "{{ patch_rollback_lvm_vg }}"
+    lv: "{{ patch_rollback_lvm_lv }}"
+    snapshot: "{{ patch_rollback_lvm_snapshot_name }}"
+    size: "{{ patch_rollback_lvm_snapshot_size }}"
+  when:
+    - patch_rollback_mode == 'snapshot'
+    - patch_rollback_lvm_enabled | bool
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Ensure the apt package cache includes historical versions needed for downgrade
+  ansible.builtin.apt:
+    update_cache: true
+  when:
+    - patch_rollback_mode == 'rollback'
+    - patch_rollback_health_status.status.ActiveState != 'active'
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Downgrade packages to recorded versions (apt)
+  ansible.builtin.apt:
+    name: "{{ item.key }}={{ item.value }}"
+    state: present
+    force: true
+    allow_downgrade: true
+  loop: "{{ (patch_rollback_recorded_packages | default({})).items() | list
+            | selectattr('0', 'in', patch_rollback_packages_scope if patch_rollback_packages_scope | length > 0
+                                     else (patch_rollback_recorded_packages | default({})).keys() | list)
+            | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when:
+    - patch_rollback_mode == 'rollback'
+    - patch_rollback_health_status.status.ActiveState != 'active'
+    - patch_rollback_recorded_packages is defined
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Remove the pre-patch LVM snapshot after a confirmed-healthy patch run
+  community.general.lvol:
+    vg: "{{ patch_rollback_lvm_vg }}"
+    lv: "{{ patch_rollback_lvm_snapshot_name }}"
+    state: absent
+    force: true
+  when:
+    - patch_rollback_mode == 'rollback'
+    - patch_rollback_lvm_enabled | bool
+    - patch_rollback_health_status.status.ActiveState == 'active'
+  tags: [patch, patch_rollback_snapshot]

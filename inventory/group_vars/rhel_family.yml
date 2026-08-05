@@ -1,0 +1,4 @@
+---
+# inventory/group_vars/rhel_family.yml
+ansible_pkg_mgr_family: dnf
+firewall_service_name: firewalld

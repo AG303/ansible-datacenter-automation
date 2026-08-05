@@ -1,0 +1,8 @@
+---
+- name: Harden EPEL / third-party repo configuration fleet-wide
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: third_party_repo_hardening
+  tags: [patch, third_party_repo_hardening]

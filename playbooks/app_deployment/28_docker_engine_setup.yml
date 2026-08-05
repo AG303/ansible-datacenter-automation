@@ -1,0 +1,9 @@
+---
+- name: Install and configure the Docker Engine across the fleet
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: docker_engine_setup
+  tags: [deploy, docker]

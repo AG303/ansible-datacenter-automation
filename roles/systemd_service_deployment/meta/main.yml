@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: systemd_service_deployment
+  author: DevOps Automation Collection
+  description: Generic reusable role that templates and deploys any custom systemd unit from service_name/exec_start/working_directory/service_user/env_vars, with rolling deploy and health-check hook.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - deploy
+    - systemd_service
+    - application
+dependencies: []

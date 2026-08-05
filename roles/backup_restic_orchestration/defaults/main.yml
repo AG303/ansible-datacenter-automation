@@ -1,0 +1,64 @@
+---
+# roles/backup_restic_orchestration/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Paths to back up -------------------------------------------------------
+restic_backup_paths:
+  - /etc
+  - /var/lib
+  - /home
+restic_backup_excludes:
+  - "*.tmp"
+  - "*.cache"
+  - "/var/lib/docker"
+  - "/var/lib/containers"
+
+# --- Repository target -------------------------------------------------------
+# Supports an S3-compatible endpoint or an on-prem object store exposed via the
+# S3 protocol (MinIO, Ceph RGW, etc). Set restic_repository explicitly, e.g.:
+#   s3:https://s3.us-east-1.amazonaws.com/dc-backups-bucket/hostname
+#   s3:https://minio.dc.internal:9000/dc-backups-bucket/hostname
+restic_repository: "s3:https://s3.{{ aws_region }}.amazonaws.com/dc-backups-bucket/{{ inventory_hostname }}"
+restic_s3_access_key: "{{ lookup('env', 'RESTIC_AWS_ACCESS_KEY_ID') | default('', true) }}"
+restic_s3_secret_key: "{{ lookup('env', 'RESTIC_AWS_SECRET_ACCESS_KEY') | default('', true) }}"
+
+# --- Repository password (NEVER hardcode) ------------------------------------
+# The repository encryption password must come from an external secrets
+# manager. Both lookup patterns are provided; pick one and set
+# restic_password_source accordingly. See tasks/main.yml for the resolution
+# logic and README.md for full usage examples.
+restic_password_source: vault              # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/backup/restic/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   restic_repository_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                     engine_mount_point=vault_kv_mount, url=vault_addr).secret.repository_password }}"
+# AWS Secrets Manager example:
+#   restic_repository_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Retention policy ---------------------------------------------------------
+restic_keep_daily: 7
+restic_keep_weekly: 4
+restic_keep_monthly: 6
+restic_keep_yearly: 2
+restic_prune_after_forget: true
+
+# --- Scheduling / execution -----------------------------------------------------
+restic_backup_action: backup                 # backup | forget | check | unlock
+restic_run_check_after_backup: true
+restic_check_read_data_subset: "5%"          # partial data-integrity read check (fast, routine)
+restic_one_file_system: true
+restic_cache_dir: /var/cache/restic
+restic_lock_timeout_seconds: 300
+
+# --- Installation -------------------------------------------------------------
+restic_version: "0.16.4"
+restic_install_method: package                # package | binary (binary pulls the pinned version above)
+restic_binary_url: "https://github.com/restic/restic/releases/download/v{{ restic_version }}/restic_{{ restic_version }}_linux_amd64.bz2"
+restic_binary_install_path: /usr.local/bin/restic
+
+# --- Notification (optional) ---------------------------------------------------
+restic_notify_webhook_url: ""                 # e.g. Slack/Teams incoming webhook; empty disables notification

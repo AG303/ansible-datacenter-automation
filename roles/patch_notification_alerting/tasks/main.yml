@@ -1,0 +1,158 @@
+---
+# roles/patch_notification_alerting/tasks/main.yml
+# After a patch run, aggregates a per-host result summary and POSTs a single
+# JSON payload to a configurable webhook (Slack/Teams/generic), run once at
+# play end via delegate_to: localhost. No OS-family branching is required —
+# this role only reads facts already gathered by other roles in the same
+# play (package_facts, reboot-required flags, etc.) and talks HTTP.
+- name: Gather installed package facts (in case no upstream patch role ran first)
+  ansible.builtin.package_facts:
+    manager: auto
+  when: ansible_facts.packages is not defined
+  tags: [patch, patch_notification_alerting]
+
+- name: Build this host's patch result summary fact
+  ansible.builtin.set_fact:
+    patch_notify_host_result:
+      hostname: "{{ inventory_hostname }}"
+      os_family: "{{ ansible_facts['os_family'] }}"
+      distribution: "{{ ansible_facts['distribution'] }}"
+      reboot_required: "{{ kernel_reboot_required | default(false) }}"
+      packages_updated_count: >-
+        {{ ((os_patch_redhat_result.results | default([]) | length)
+            if os_patch_redhat_result is defined else 0)
+           + ((security_patch_redhat_result.results | default([]) | length)
+              if security_patch_redhat_result is defined else 0) }}
+      success: "{{ not (ansible_failed_task is defined) }}"
+      finished_at: "{{ ansible_date_time.iso8601 }}"
+  tags: [patch, patch_notification_alerting]
+
+- name: Resolve webhook URL from HashiCorp Vault
+  ansible.builtin.set_fact:
+    patch_notify_webhook_url: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                engine_mount_point=vault_kv_mount, url=vault_addr).secret.url }}
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true
+  when:
+    - patch_notify_webhook_enabled | bool
+    - patch_notify_webhook_from_vault | bool
+    - secrets_backend | default('hashicorp_vault') == 'hashicorp_vault'
+  tags: [patch, patch_notification_alerting]
+
+- name: Resolve webhook URL from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    patch_notify_webhook_url: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true
+  when:
+    - patch_notify_webhook_enabled | bool
+    - patch_notify_webhook_from_vault | bool
+    - secrets_backend | default('hashicorp_vault') == 'aws_secrets_manager'
+  tags: [patch, patch_notification_alerting]
+
+- name: Use directly-supplied webhook URL override (non-vault fallback)
+  ansible.builtin.set_fact:
+    patch_notify_webhook_url: "{{ patch_notify_webhook_url_override }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true
+  when:
+    - patch_notify_webhook_enabled | bool
+    - not (patch_notify_webhook_from_vault | bool)
+  tags: [patch, patch_notification_alerting]
+
+- name: Aggregate fleet-wide patch results across all hosts in the play
+  ansible.builtin.set_fact:
+    patch_notify_fleet_summary:
+      run_label: "{{ patch_notify_run_label }}"
+      finished_at: "{{ ansible_date_time.iso8601 }}"
+      host_count: "{{ ansible_play_hosts_all | length }}"
+      hosts_needing_reboot: >-
+        {{ ansible_play_hosts_all
+           | map('extract', hostvars, 'patch_notify_host_result')
+           | selectattr('reboot_required')
+           | map(attribute='hostname')
+           | list }}
+      results: "{{ ansible_play_hosts_all | map('extract', hostvars, 'patch_notify_host_result') | list }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_notification_alerting]
+
+- name: Build Slack-formatted webhook payload
+  ansible.builtin.set_fact:
+    patch_notify_payload:
+      text: >-
+        :white_check_mark: Patch run complete: {{ patch_notify_fleet_summary.run_label }}
+        — {{ patch_notify_fleet_summary.host_count }} host(s),
+        {{ patch_notify_fleet_summary.hosts_needing_reboot | length }} pending reboot.
+      attachments:
+        - color: "{{ '#e0a800' if patch_notify_fleet_summary.hosts_needing_reboot | length > 0 else '#2eb886' }}"
+          fields: "{{ patch_notify_fleet_summary.results | map('combine', {'title': 'host', 'short': true}) | list }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: patch_notify_webhook_format == 'slack'
+  tags: [patch, patch_notification_alerting]
+
+- name: Build Microsoft Teams-formatted webhook payload
+  ansible.builtin.set_fact:
+    patch_notify_payload:
+      "@type": MessageCard
+      "@context": "http://schema.org/extensions"
+      summary: "Patch run complete: {{ patch_notify_fleet_summary.run_label }}"
+      themeColor: "{{ 'E0A800' if patch_notify_fleet_summary.hosts_needing_reboot | length > 0 else '2EB886' }}"
+      title: "Patch run complete: {{ patch_notify_fleet_summary.run_label }}"
+      text: >-
+        {{ patch_notify_fleet_summary.host_count }} host(s) processed;
+        {{ patch_notify_fleet_summary.hosts_needing_reboot | length }} pending reboot:
+        {{ patch_notify_fleet_summary.hosts_needing_reboot | join(', ') }}
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: patch_notify_webhook_format == 'teams'
+  tags: [patch, patch_notification_alerting]
+
+- name: Build generic JSON webhook payload
+  ansible.builtin.set_fact:
+    patch_notify_payload: "{{ patch_notify_fleet_summary }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: patch_notify_webhook_format == 'generic'
+  tags: [patch, patch_notification_alerting]
+
+- name: POST patch run summary to the configured webhook
+  ansible.builtin.uri:
+    url: "{{ patch_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body: "{{ patch_notify_payload }}"
+    status_code: [200, 201, 202, 204]
+    timeout: "{{ patch_notify_webhook_timeout }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true
+  when:
+    - patch_notify_webhook_enabled | bool
+    - patch_notify_webhook_url is defined
+    - patch_notify_webhook_url | length > 0
+  tags: [patch, patch_notification_alerting]
+
+- name: Display local summary of the patch run (always shown, independent of webhook)
+  ansible.builtin.debug:
+    msg:
+      - "Patch run: {{ patch_notify_fleet_summary.run_label }}"
+      - "Hosts processed: {{ patch_notify_fleet_summary.host_count }}"
+      - "Hosts pending reboot: {{ patch_notify_fleet_summary.hosts_needing_reboot | join(', ') if patch_notify_fleet_summary.hosts_needing_reboot | length > 0 else 'none' }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_notification_alerting]

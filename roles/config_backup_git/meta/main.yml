@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: config_backup_git
+  author: DevOps Automation Collection
+  description: Periodically commits key /etc configuration files to a local git repository and pushes to a remote bare repo on a backup host for change-tracking and quick config DR.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - configgit
+dependencies: []

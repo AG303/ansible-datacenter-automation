@@ -1,0 +1,39 @@
+---
+# roles/os_patch_rolling_update/tasks/debian.yml — Debian-family full upgrade
+- name: Refresh apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when: os_patch_update_cache | bool
+  tags: [patch, os_patch_rolling_update]
+
+- name: Place packages on hold to exclude them from this upgrade
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ os_patch_exclude_packages }}"
+  when: os_patch_exclude_packages | length > 0
+  tags: [patch, os_patch_rolling_update]
+
+- name: Upgrade all packages to latest (apt full-upgrade)
+  ansible.builtin.apt:
+    upgrade: full
+    update_cache: false
+  register: os_patch_debian_result
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tags: [patch, os_patch_rolling_update]
+
+- name: Release hold on excluded packages after upgrade
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: install
+  loop: "{{ os_patch_exclude_packages }}"
+  when: os_patch_exclude_packages | length > 0
+  tags: [patch, os_patch_rolling_update]
+
+- name: Remove dependencies that are no longer required
+  ansible.builtin.apt:
+    autoremove: true
+  when: os_patch_autoremove | bool
+  tags: [patch, os_patch_rolling_update]

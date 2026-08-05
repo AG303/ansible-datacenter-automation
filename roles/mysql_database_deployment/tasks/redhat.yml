@@ -1,0 +1,23 @@
+---
+# roles/mysql_database_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Open MySQL/MariaDB port in firewalld (only when bind_address is not loopback)
+  ansible.posix.firewalld:
+    port: "3306/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - mysql_bind_address != '127.0.0.1'
+  tags: [deploy, mysql]
+
+- name: Ensure SELinux allows mysqld to bind on a non-default port context (mysqld_port_t already covers 3306)
+  ansible.posix.seboolean:
+    name: mysql_connect_any
+    state: true
+    persistent: true
+  when:
+    - ansible_facts['selinux']['status'] is defined
+    - ansible_facts['selinux']['status'] == 'enabled'
+    - mysql_bind_address != '127.0.0.1'
+  tags: [deploy, mysql]

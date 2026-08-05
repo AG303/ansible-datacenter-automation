@@ -1,0 +1,47 @@
+---
+# roles/database_backup_restore/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Mode switch --------------------------------------------------------------
+db_backup_action: backup             # backup | restore
+db_engine: mysql                     # mysql | postgresql
+
+# --- Connection details ---------------------------------------------------------
+db_host: "127.0.0.1"
+db_port: "{{ 3306 if db_engine == 'mysql' else 5432 }}"
+db_name: "app_production"
+db_admin_user: "{{ 'root' if db_engine == 'mysql' else 'postgres' }}"
+
+# --- Credentials (NEVER hardcode) -----------------------------------------------
+# Both lookup patterns are provided; pick one via db_credential_source.
+db_credential_source: vault          # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/database/{{ db_engine }}/{{ db_name }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   db_admin_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                            engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+# AWS Secrets Manager example:
+#   db_admin_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Local staging / dump options -----------------------------------------------
+db_dump_local_dir: /var/backups/db-dumps
+db_dump_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+db_dump_filename: "{{ db_name }}-{{ db_dump_timestamp }}.sql.gz"
+db_dump_retention_days: 14
+
+# --- Backup destination (S3 or NFS path) ----------------------------------------
+db_backup_destination_type: s3        # s3 | nfs
+db_backup_s3_bucket: "dc-database-backups"
+db_backup_s3_prefix: "{{ db_engine }}/{{ inventory_hostname }}"
+db_backup_nfs_path: "/mnt/dr-backups/db/{{ inventory_hostname }}"
+
+# --- Restore options --------------------------------------------------------------
+db_restore_target_file: ""            # explicit dump filename to restore; empty = pull latest
+db_restore_confirm: false             # must be explicitly set true to allow a restore to proceed
+db_restore_drop_existing: false       # if true, drops/recreates the target database before loading
+
+# --- Notification (optional) ------------------------------------------------------
+db_notify_webhook_url: ""

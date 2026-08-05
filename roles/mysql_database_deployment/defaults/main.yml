@@ -1,0 +1,61 @@
+---
+# roles/mysql_database_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+mysql_flavor: "mariadb"              # "mariadb" (distro default on most EL/Debian repos) or "mysql"
+mysql_package_state: present
+mysql_service_enabled: true
+mysql_service_state: started
+
+# --- my.cnf tuning -------------------------------------------------------------
+mysql_bind_address: "127.0.0.1"      # widen to 0.0.0.0 only with firewall/security-group controls in place
+mysql_max_connections: 151
+mysql_innodb_buffer_pool_size: "1G"
+mysql_innodb_log_file_size: "256M"
+mysql_innodb_flush_log_at_trx_commit: 1
+mysql_slow_query_log: true
+mysql_long_query_time: 2
+mysql_character_set_server: "utf8mb4"
+mysql_collation_server: "utf8mb4_unicode_ci"
+
+# --- Root credential bootstrap: NEVER hardcode. Pulled from an external secrets
+# manager. Both lookup patterns are illustrated; choose the one matching your
+# environment via mysql_secrets_backend.
+mysql_secrets_backend: "hashi_vault"  # "hashi_vault" or "aws_secrets_manager"
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/mysql/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+
+mysql_root_password: >-
+  {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+       engine_mount_point=vault_kv_mount, url=vault_addr).secret.root_password)
+     if mysql_secrets_backend == 'hashi_vault'
+     else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json).root_password }}
+
+# --- Application databases and users --------------------------------------------
+# Each user's password is looked up individually from the same secret path under
+# a per-user field, e.g. secret.<username>_password — adapt the field naming
+# convention to match how your secrets are actually organized.
+#
+# Example:
+# mysql_databases:
+#   - name: app_orders
+#     encoding: utf8mb4
+#     collation: utf8mb4_unicode_ci
+# mysql_users:
+#   - name: orders_svc
+#     host: "10.0.%.%"
+#     priv: "app_orders.*:ALL"
+#     password_secret_field: orders_svc_password
+mysql_databases: []
+mysql_users: []
+
+# --- Replication (optional, guarded) ------------------------------------------
+mysql_replication_enabled: false
+mysql_replication_role: "source"      # "source" or "replica"
+mysql_server_id: 1
+mysql_replication_source_host: ""
+mysql_replication_user: "repl_svc"
+mysql_replication_password_secret_field: "replication_password"

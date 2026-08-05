@@ -1,0 +1,217 @@
+---
+# roles/incident_snapshot_capture/tasks/main.yml
+# On-demand diagnostic capture — gathers system state into a timestamped archive
+# per host for incident postmortems. Strictly read-only; never mutates state.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "incident_snapshot_capture supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, incidentcapture]
+
+- name: Install diagnostic capture dependencies
+  ansible.builtin.package:
+    name: "{{ incident_capture_dependency_packages[ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, incidentcapture]
+
+- name: Ensure local capture working directory exists
+  ansible.builtin.file:
+    path: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, incidentcapture]
+
+- name: Capture top processes by CPU and memory usage
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    ps aux --sort=-%cpu | head -n {{ incident_capture_top_process_count + 1 }} > top_cpu.txt &&
+    ps aux --sort=-%mem | head -n {{ incident_capture_top_process_count + 1 }} > top_mem.txt
+  args:
+    chdir: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}"
+    executable: /bin/bash
+  changed_when: false
+  when: incident_capture_top_processes | bool
+  tags: [dr, incidentcapture]
+
+- name: Capture disk usage
+  ansible.builtin.command:
+    cmd: "df -hT"
+  register: incident_disk_usage
+  changed_when: false
+  when: incident_capture_disk_memory | bool
+  tags: [dr, incidentcapture]
+
+- name: Write disk usage capture to file
+  ansible.builtin.copy:
+    content: "{{ incident_disk_usage.stdout }}\n"
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/disk_usage.txt"
+    mode: "0600"
+  when: incident_capture_disk_memory | bool
+  tags: [dr, incidentcapture]
+
+- name: Capture memory usage
+  ansible.builtin.command:
+    cmd: "free -h"
+  register: incident_memory_usage
+  changed_when: false
+  when: incident_capture_disk_memory | bool
+  tags: [dr, incidentcapture]
+
+- name: Write memory usage capture to file
+  ansible.builtin.copy:
+    content: "{{ incident_memory_usage.stdout }}\n"
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/memory_usage.txt"
+    mode: "0600"
+  when: incident_capture_disk_memory | bool
+  tags: [dr, incidentcapture]
+
+- name: Capture recent journal/syslog lines
+  ansible.builtin.command:
+    cmd: >-
+      journalctl --no-pager -n {{ incident_capture_journal_line_count }}
+      --since "{{ incident_capture_journal_since }}"
+  register: incident_journal_capture
+  changed_when: false
+  failed_when: false
+  when: incident_capture_journal_lines | bool
+  tags: [dr, incidentcapture]
+
+- name: Write journal capture to file
+  ansible.builtin.copy:
+    content: "{{ incident_journal_capture.stdout }}\n"
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/journal.txt"
+    mode: "0600"
+  when: incident_capture_journal_lines | bool
+  tags: [dr, incidentcapture]
+
+- name: Capture active network connections and listening sockets
+  ansible.builtin.command:
+    cmd: "ss -tunapl"
+  register: incident_network_capture
+  changed_when: false
+  when: incident_capture_network_connections | bool
+  tags: [dr, incidentcapture]
+
+- name: Write network connections capture to file
+  ansible.builtin.copy:
+    content: "{{ incident_network_capture.stdout }}\n"
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/network_connections.txt"
+    mode: "0600"
+  when: incident_capture_network_connections | bool
+  tags: [dr, incidentcapture]
+
+- name: Capture status of services of interest
+  ansible.builtin.command:
+    cmd: "systemctl status {{ item }} --no-pager"
+  loop: "{{ incident_capture_services_of_interest }}"
+  loop_control:
+    label: "{{ item }}"
+  register: incident_service_status_capture
+  changed_when: false
+  failed_when: false
+  when: incident_capture_service_statuses | bool
+  tags: [dr, incidentcapture]
+
+- name: Write service status captures to file
+  ansible.builtin.copy:
+    content: |
+      {% for result in incident_service_status_capture.results %}
+      === {{ result.item }} ===
+      {{ result.stdout | default('(service not found / inactive)') }}
+
+      {% endfor %}
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/service_statuses.txt"
+    mode: "0600"
+  when: incident_capture_service_statuses | bool
+  tags: [dr, incidentcapture]
+
+- name: Capture uptime and load average
+  ansible.builtin.command:
+    cmd: "uptime"
+  register: incident_uptime_capture
+  changed_when: false
+  tags: [dr, incidentcapture]
+
+- name: Write uptime/load capture to file
+  ansible.builtin.copy:
+    content: "{{ incident_uptime_capture.stdout }}\n"
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/uptime_loadavg.txt"
+    mode: "0600"
+  tags: [dr, incidentcapture]
+
+- name: Archive all captured diagnostic files
+  community.general.archive:
+    path: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}/*"
+    dest: "{{ incident_capture_local_dir }}/{{ incident_capture_archive_name }}"
+    format: gz
+  tags: [dr, incidentcapture]
+
+- name: Remove the uncompressed capture working directory
+  ansible.builtin.file:
+    path: "{{ incident_capture_local_dir }}/{{ incident_capture_timestamp }}"
+    state: absent
+  tags: [dr, incidentcapture]
+
+- name: Upload incident diagnostic archive to S3 backup destination
+  amazon.aws.s3_object:
+    bucket: "{{ incident_capture_s3_bucket }}"
+    object: "{{ incident_capture_s3_prefix }}/{{ incident_capture_archive_name }}"
+    src: "{{ incident_capture_local_dir }}/{{ incident_capture_archive_name }}"
+    mode: put
+    region: "{{ aws_region }}"
+  when:
+    - incident_capture_upload_enabled | bool
+    - incident_capture_backup_destination_type == 's3'
+  tags: [dr, incidentcapture]
+
+- name: Ensure NFS incident diagnostics destination directory exists
+  ansible.builtin.file:
+    path: "{{ incident_capture_nfs_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - incident_capture_upload_enabled | bool
+    - incident_capture_backup_destination_type == 'nfs'
+  tags: [dr, incidentcapture]
+
+- name: Copy incident diagnostic archive to NFS backup destination
+  ansible.builtin.copy:
+    src: "{{ incident_capture_local_dir }}/{{ incident_capture_archive_name }}"
+    dest: "{{ incident_capture_nfs_path }}/{{ incident_capture_archive_name }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - incident_capture_upload_enabled | bool
+    - incident_capture_backup_destination_type == 'nfs'
+  tags: [dr, incidentcapture]
+
+- name: Purge local incident archives older than retention window
+  ansible.builtin.find:
+    paths: "{{ incident_capture_local_dir }}"
+    age: "{{ incident_capture_local_retention_days }}d"
+    patterns: "incident-{{ inventory_hostname }}-*.tar.gz"
+  register: incident_old_archives
+  tags: [dr, incidentcapture]
+
+- name: Remove expired local incident archives
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ incident_old_archives.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  tags: [dr, incidentcapture]
+
+- name: Remove local archive immediately if retention is disabled
+  ansible.builtin.file:
+    path: "{{ incident_capture_local_dir }}/{{ incident_capture_archive_name }}"
+    state: absent
+  when: not (incident_capture_retain_local_archive | bool)
+  tags: [dr, incidentcapture]

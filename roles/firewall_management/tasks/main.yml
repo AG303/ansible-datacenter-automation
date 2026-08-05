@@ -1,0 +1,43 @@
+---
+# roles/firewall_management/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "firewall_management supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, firewall]
+
+- name: Ensure firewall package is installed
+  ansible.builtin.package:
+    name: "{{ firewall_package_name[ansible_facts['os_family']] }}"
+    state: present
+  when: firewall_manage_package | bool
+  tags: [security, firewall]
+
+- name: Include RedHat-specific tasks (firewalld)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [security, firewall]
+
+- name: Include Debian-specific tasks (ufw)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [security, firewall]
+
+- name: Ensure firewall service is enabled and running
+  ansible.builtin.service:
+    name: "{{ firewall_service_name[ansible_facts['os_family']] }}"
+    state: "{{ firewall_service_state }}"
+    enabled: "{{ firewall_service_enabled | bool }}"
+  tags: [security, firewall]
+
+# --- Example: pulling a centrally-managed list of trusted source CIDRs from
+# an external secrets manager rather than committing them to group_vars.
+# Disabled by default via firewall_source_cidrs_from_vault_enabled.
+# - name: Retrieve trusted CIDR allow-list from HashiCorp Vault
+#   ansible.builtin.set_fact:
+#     firewall_trusted_cidrs: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                  engine_mount_point=vault_kv_mount, url=vault_addr).secret.cidrs }}"
+#   no_log: true
+#   when: firewall_source_cidrs_from_vault_enabled | bool
+#   tags: [security, firewall]

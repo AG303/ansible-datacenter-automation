@@ -1,0 +1,76 @@
+---
+# roles/compliance_scan_reporting/tasks/main.yml
+# General hygiene scanning only — not tied to a named certification.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "compliance_scan_reporting supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, compliance]
+
+- name: Ensure compliance scan report directory exists
+  ansible.builtin.file:
+    path: "{{ compliance_scan_report_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [security, compliance]
+
+- name: Include RedHat-specific tasks (package availability)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [security, compliance]
+
+- name: Include Debian-specific tasks (package availability)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [security, compliance]
+
+- name: Run lynis audit scan
+  ansible.builtin.command:
+    cmd: >-
+      {{ lynis_binary_path }} audit system --quiet --no-colors
+      --report-file {{ compliance_scan_report_dir }}/lynis-report-{{ ansible_date_time.iso8601_basic_short }}.dat
+      --logfile {{ compliance_scan_report_dir }}/lynis-{{ ansible_date_time.iso8601_basic_short }}.log
+  register: _lynis_run
+  changed_when: true
+  failed_when: false
+  when: compliance_scan_tool == 'lynis'
+  tags: [security, compliance]
+
+- name: Run openscap-scanner audit scan (RedHat family only, if present)
+  ansible.builtin.command:
+    cmd: >-
+      oscap xccdf eval --profile {{ compliance_scan_profile }}
+      --results {{ compliance_scan_report_dir }}/oscap-results-{{ ansible_date_time.iso8601_basic_short }}.xml
+      --report {{ compliance_scan_report_dir }}/oscap-report-{{ ansible_date_time.iso8601_basic_short }}.html
+      /usr/share/xml/scap/ssg/content/ssg-{{ ansible_facts['distribution'] | lower }}{{ ansible_facts['distribution_major_version'] }}-ds.xml
+  register: _oscap_run
+  changed_when: true
+  failed_when: false
+  when:
+    - compliance_scan_tool == 'openscap_scanner'
+    - ansible_facts['os_family'] == 'RedHat'
+  tags: [security, compliance]
+
+- name: Parse lynis report for pass/warn/fail counts
+  ansible.builtin.include_tasks: parse_lynis.yml
+  when:
+    - compliance_scan_tool == 'lynis'
+    - _lynis_run is defined
+  tags: [security, compliance]
+
+- name: Push scan summary to configured delivery target
+  ansible.builtin.include_tasks: publish_report.yml
+  tags: [security, compliance]
+
+- name: Prune old local reports beyond retention count
+  ansible.builtin.shell: >-
+    ls -1t {{ compliance_scan_report_dir }}/lynis-report-*.dat 2>/dev/null | tail -n +{{ compliance_scan_retain_reports | int + 1 }} | xargs -r rm -f
+  args:
+    executable: /bin/bash
+  register: _prune_result
+  changed_when: _prune_result.stdout != ""
+  failed_when: false
+  tags: [security, compliance]

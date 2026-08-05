@@ -1,0 +1,22 @@
+---
+# roles/patch_compliance_report/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Baseline definition ------------------------------------------------------
+# Dict of package name -> minimum acceptable version. A host is flagged
+# non-compliant if an in-scope package is installed below this version, or
+# missing entirely when marked required.
+required_patch_baseline:
+  openssl: "1.1.1k"
+  openssh-server: "8.0"
+  kernel: "4.18.0"
+patch_baseline_required_packages: []   # packages in required_patch_baseline that MUST be present (missing = non-compliant); others are only checked if installed
+
+# --- Output -------------------------------------------------------------------
+patch_compliance_report_dir: "/tmp/patch_reports"
+patch_compliance_report_json: "{{ patch_compliance_report_dir }}/patch_compliance_{{ ansible_date_time.iso8601_basic_short }}.json"
+patch_compliance_report_csv: "{{ patch_compliance_report_dir }}/patch_compliance_{{ ansible_date_time.iso8601_basic_short }}.csv"
+
+# --- Behaviour ------------------------------------------------------------------
+patch_compliance_fail_play_on_noncompliance: false   # set true to fail the play for any non-compliant host (strict gating mode)

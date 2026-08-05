@@ -1,0 +1,5 @@
+---
+# roles/patch_rollback_snapshot/handlers/main.yml
+# No handlers are required: snapshot/downgrade operations here are explicit,
+# ordered tasks rather than notify-driven service changes. Kept for
+# structural consistency across the collection.

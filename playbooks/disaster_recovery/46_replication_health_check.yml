@@ -1,0 +1,8 @@
+---
+- name: Check database and filesystem replication health
+  hosts: "{{ target_hosts | default('db_servers') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: replication_health_check
+  tags: [dr, replication]

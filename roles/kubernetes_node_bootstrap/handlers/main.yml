@@ -1,0 +1,6 @@
+---
+# roles/kubernetes_node_bootstrap/handlers/main.yml
+- name: Restart containerd
+  ansible.builtin.service:
+    name: "{{ kubernetes_containerd_service_name[ansible_facts['os_family']] }}"
+    state: restarted

@@ -1,0 +1,40 @@
+---
+# roles/unattended_upgrades_config/tasks/debian.yml — unattended-upgrades + apt-daily timers
+- name: Install unattended-upgrades and apt-listchanges
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+    update_cache: true
+  tags: [patch, unattended_upgrades_config]
+
+- name: Deploy 50unattended-upgrades configuration
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart unattended-upgrades service
+  tags: [patch, unattended_upgrades_config]
+
+- name: Deploy 20auto-upgrades configuration (enables the daily cadence)
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [patch, unattended_upgrades_config]
+
+- name: Enable and start apt-daily and apt-daily-upgrade timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: "{{ auto_patch_enabled | bool }}"
+    state: "{{ 'started' if auto_patch_enabled | bool else 'stopped' }}"
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  when: apt_daily_upgrade_enabled | bool
+  tags: [patch, unattended_upgrades_config]

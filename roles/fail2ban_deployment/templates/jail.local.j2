@@ -1,0 +1,29 @@
+{{ ansible_managed | comment }}
+# Managed by the fail2ban_deployment Ansible role — do not edit by hand.
+
+[DEFAULT]
+bantime = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+backend = {{ fail2ban_backend }}
+{% if fail2ban_bantime_increment %}
+bantime.increment = true
+bantime.factor = {{ fail2ban_bantime_factor }}
+bantime.maxtime = {{ fail2ban_bantime_maxtime }}
+{% endif %}
+ignoreip = {{ fail2ban_ignoreip | join(' ') }}
+destemail = {{ fail2ban_destemail }}
+sender = {{ fail2ban_sender }}
+action = {{ fail2ban_action }}
+
+{% for jail in fail2ban_jails %}
+[{{ jail.name }}]
+enabled = {{ jail.enabled | lower }}
+port = {{ jail.port }}
+filter = {{ jail.filter }}
+logpath = {{ jail.logpath }}
+maxretry = {{ jail.maxretry }}
+bantime = {{ jail.bantime }}
+findtime = {{ jail.findtime }}
+
+{% endfor %}

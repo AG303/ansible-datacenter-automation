@@ -1,0 +1,80 @@
+---
+# roles/user_account_management/tasks/present.yml
+# Included once per user_accounts entry with state in [present, disabled].
+- name: "Retrieve initial password for {{ acct.name }} from secrets manager"
+  ansible.builtin.set_fact:
+    _user_initial_password: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get',
+                 'datacenter/local_accounts/' + acct.name,
+                 engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}
+  no_log: true
+  when:
+    - acct.password_from_vault | default(false) | bool
+    - acct.state == 'present'
+  tags: [security, useracct]
+  # AWS Secrets Manager alternative:
+  # _user_initial_password: "{{ lookup('amazon.aws.aws_secret',
+  #                              'datacenter/local_accounts/' + acct.name, region=aws_region) }}"
+
+- name: "Ensure group memberships exist for {{ acct.name }}"
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ acct.groups | default([]) }}"
+  tags: [security, useracct]
+
+- name: "Create or update local account {{ acct.name }}"
+  ansible.builtin.user:
+    name: "{{ acct.name }}"
+    comment: "{{ acct.comment | default(omit) }}"
+    groups: "{{ acct.groups | default([]) }}"
+    append: "{{ acct.append_groups | default(true) }}"
+    shell: "{{ acct.shell | default(user_default_shell) }}"
+    home: "{{ acct.home | default(user_home_base_dir + '/' + acct.name) }}"
+    create_home: "{{ acct.create_home | default(true) }}"
+    password: "{{ (_user_initial_password | password_hash('sha512')) if _user_initial_password is defined else omit }}"
+    update_password: "{{ 'on_create' if _user_initial_password is defined else 'always' }}"
+    state: present
+  no_log: true
+  tags: [security, useracct]
+
+- name: "Set home directory permissions for {{ acct.name }}"
+  ansible.builtin.file:
+    path: "{{ acct.home | default(user_home_base_dir + '/' + acct.name) }}"
+    owner: "{{ acct.name }}"
+    group: "{{ acct.primary_group | default(acct.name) }}"
+    mode: "{{ acct.home_mode | default(user_home_dir_mode) }}"
+    state: directory
+  when: acct.create_home | default(true) | bool
+  tags: [security, useracct]
+
+- name: "Deploy SSH authorized_keys for {{ acct.name }}"
+  ansible.posix.authorized_key:
+    user: "{{ acct.name }}"
+    key: "{{ acct.ssh_authorized_keys | join('\n') }}"
+    exclusive: "{{ user_ssh_authorized_keys_exclusive | bool }}"
+    state: present
+  when: acct.ssh_authorized_keys | default([]) | length > 0
+  tags: [security, useracct]
+
+- name: "Add {{ acct.name }} to sudo/admin group"
+  ansible.builtin.user:
+    name: "{{ acct.name }}"
+    groups: "{{ user_sudo_group[ansible_facts['os_family']] }}"
+    append: true
+  when: acct.sudo | default(false) | bool
+  tags: [security, useracct]
+
+- name: "Lock (disable) account {{ acct.name }}"
+  ansible.builtin.user:
+    name: "{{ acct.name }}"
+    password_lock: true
+    shell: /sbin/nologin
+    state: present
+  when: acct.state == 'disabled'
+  tags: [security, useracct]
+
+- name: "Unset transient password fact for {{ acct.name }}"
+  ansible.builtin.set_fact:
+    _user_initial_password: null
+  tags: [security, useracct]

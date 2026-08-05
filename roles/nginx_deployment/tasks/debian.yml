@@ -1,0 +1,21 @@
+---
+# roles/nginx_deployment/tasks/debian.yml — Debian-family specific adjustments
+- name: Ensure sites-enabled directory is included by nginx.conf convention
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [deploy, nginx]
+
+- name: Open HTTP/HTTPS ports in ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "80"
+    - "443"
+  when: ansible_facts.services['ufw.service'] is defined
+  tags: [deploy, nginx]

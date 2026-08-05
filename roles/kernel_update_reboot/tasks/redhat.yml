@@ -1,0 +1,21 @@
+---
+# roles/kernel_update_reboot/tasks/redhat.yml — RedHat-family kernel update
+- name: Refresh dnf metadata cache
+  ansible.builtin.dnf:
+    update_cache: true
+  when: kernel_update_cache | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Update kernel package to latest available version
+  ansible.builtin.dnf:
+    name: "{{ kernel_package_name_override | default(kernel_package_name['RedHat'], true) }}"
+    state: latest
+  register: kernel_redhat_update_result
+  tags: [patch, kernel_update_reboot]
+
+- name: Remove old kernel packages beyond the retention count (RHEL/dnf)
+  ansible.builtin.command: package-cleanup --oldkernels --count=2 -y
+  register: kernel_redhat_cleanup
+  changed_when: "'No Packages' not in kernel_redhat_cleanup.stdout"
+  failed_when: false
+  tags: [patch, kernel_update_reboot]

@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+# Managed by the auditd_configuration Ansible role — do not edit by hand.
+
+log_file = {{ auditd_log_file }}
+log_format = ENRICHED
+log_group = root
+priority_boost = 4
+flush = INCREMENTAL_ASYNC
+freq = 50
+num_logs = {{ auditd_num_logs }}
+max_log_file = {{ auditd_max_log_file_mb }}
+max_log_file_action = {{ auditd_max_log_file_action | upper }}
+space_left = {{ auditd_space_left_mb }}
+space_left_action = {{ auditd_space_left_action | upper }}
+admin_space_left = {{ auditd_admin_space_left_mb }}
+admin_space_left_action = {{ auditd_admin_space_left_action | upper }}
+disk_full_action = {{ auditd_disk_full_action | upper }}
+disk_error_action = {{ auditd_disk_error_action | upper }}
+use_libwrap = yes

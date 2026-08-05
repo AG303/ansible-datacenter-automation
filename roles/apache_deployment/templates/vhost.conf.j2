@@ -1,0 +1,53 @@
+{{ ansible_managed | comment }}
+# Managed by the apache_deployment Ansible role — do not edit by hand.
+# Vhost: {{ item.name }}
+
+<VirtualHost *:{{ item.listen_port | default(80) }}>
+    ServerName {{ item.server_name }}
+    ServerAdmin {{ apache_server_admin }}
+
+{% if item.proxy_pass is defined %}
+    ProxyPreserveHost On
+    ProxyPass / {{ item.proxy_pass }}
+    ProxyPassReverse / {{ item.proxy_pass }}
+{% else %}
+    DocumentRoot {{ item.document_root | default('/var/www/' + item.name) }}
+    <Directory "{{ item.document_root | default('/var/www/' + item.name) }}">
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+{% endif %}
+
+    ErrorLog "{{ apache_log_dir[ansible_facts['os_family']] }}/{{ item.name }}_error.log"
+    CustomLog "{{ apache_log_dir[ansible_facts['os_family']] }}/{{ item.name }}_access.log" combined
+</VirtualHost>
+
+{% if item.tls_enabled | default(false) %}
+<VirtualHost *:{{ item.tls_port | default(443) }}>
+    ServerName {{ item.server_name }}
+    ServerAdmin {{ apache_server_admin }}
+
+    SSLEngine on
+    SSLCertificateFile {{ item.tls_cert_path | default(apache_certificate_management_output_dir + '/' + item.name + '.crt') }}
+    SSLCertificateKeyFile {{ item.tls_key_path | default(apache_certificate_management_output_dir + '/' + item.name + '.key') }}
+    SSLProtocol {{ apache_tls_protocols }}
+    SSLCipherSuite {{ apache_tls_ciphers }}
+
+{% if item.proxy_pass is defined %}
+    ProxyPreserveHost On
+    ProxyPass / {{ item.proxy_pass }}
+    ProxyPassReverse / {{ item.proxy_pass }}
+{% else %}
+    DocumentRoot {{ item.document_root | default('/var/www/' + item.name) }}
+    <Directory "{{ item.document_root | default('/var/www/' + item.name) }}">
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+{% endif %}
+
+    ErrorLog "{{ apache_log_dir[ansible_facts['os_family']] }}/{{ item.name }}_ssl_error.log"
+    CustomLog "{{ apache_log_dir[ansible_facts['os_family']] }}/{{ item.name }}_ssl_access.log" combined
+</VirtualHost>
+{% endif %}

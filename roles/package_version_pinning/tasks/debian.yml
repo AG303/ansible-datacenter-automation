@@ -1,0 +1,48 @@
+---
+# roles/package_version_pinning/tasks/debian.yml — apt-mark hold management
+- name: Ensure the target version is installed before holding (when a specific version is requested)
+  ansible.builtin.apt:
+    name: "{{ item.name }}={{ item.version }}"
+    state: present
+    allow_downgrade: true
+    force: true
+  loop: "{{ pinned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when:
+    - package_version_pinning_state == 'present'
+    - item.version is defined and item.version | length > 0
+  tags: [patch, package_version_pinning]
+
+- name: Hold pinned packages at their current version (apt-mark hold)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item.name }}"
+    selection: hold
+  loop: "{{ pinned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: package_version_pinning_state == 'present'
+  tags: [patch, package_version_pinning]
+
+- name: Release hold on packages no longer pinned (apt-mark unhold)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item.name }}"
+    selection: install
+  loop: "{{ pinned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: package_version_pinning_state == 'absent'
+  tags: [patch, package_version_pinning]
+
+- name: Display current apt package holds
+  ansible.builtin.command: apt-mark showhold
+  register: apt_hold_list_result
+  changed_when: false
+  tags: [patch, package_version_pinning]
+
+- name: Show active apt holds
+  ansible.builtin.debug:
+    msg: "{{ apt_hold_list_result.stdout_lines }}"
+  tags: [patch, package_version_pinning]

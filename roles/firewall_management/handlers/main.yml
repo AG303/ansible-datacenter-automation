@@ -1,0 +1,6 @@
+---
+# roles/firewall_management/handlers/main.yml
+- name: Reload firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: reloaded

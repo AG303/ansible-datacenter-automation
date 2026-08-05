@@ -1,0 +1,83 @@
+---
+# roles/repo_management/tasks/debian.yml — manage apt sources.list.d entries
+- name: Ensure apt keyrings directory exists
+  ansible.builtin.file:
+    path: "{{ repo_keyring_dir['Debian'] }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: repo_management_use_deb822 | bool
+  tags: [patch, repo_management]
+
+- name: Download and dearmor GPG keys for apt repo definitions (deb822 path)
+  ansible.builtin.get_url:
+    url: "{{ item.gpgkey }}"
+    dest: "{{ repo_keyring_dir['Debian'] }}/{{ item.name }}.asc"
+    mode: "0644"
+  loop: "{{ repo_definitions | selectattr('deb_suite', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.gpgkey is defined
+    - repo_management_use_deb822 | bool
+  tags: [patch, repo_management]
+
+- name: Deploy apt repo definitions using deb822 format (Ubuntu 22.04+/Debian 12+)
+  ansible.builtin.deb822_repository:
+    name: "{{ item.name }}"
+    types: deb
+    uris: "{{ item.baseurl }}"
+    suites: "{{ item.deb_suite }}"
+    components: "{{ item.deb_components | default(['main']) }}"
+    signed_by: "{{ repo_keyring_dir['Debian'] }}/{{ item.name }}.asc"
+    enabled: "{{ item.enabled | default(true) }}"
+  loop: "{{ repo_definitions | selectattr('deb_suite', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: repo_management_use_deb822 | bool
+  notify: Refresh apt cache
+  tags: [patch, repo_management]
+
+- name: Import GPG keys for apt repo definitions (legacy apt_key path)
+  ansible.builtin.apt_key:
+    url: "{{ item.gpgkey }}"
+    keyring: "/etc/apt/trusted.gpg.d/{{ item.name }}.gpg"
+    state: present
+  loop: "{{ repo_definitions | selectattr('deb_suite', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.gpgkey is defined
+    - not (repo_management_use_deb822 | bool)
+  notify: Refresh apt cache
+  tags: [patch, repo_management]
+
+- name: Deploy legacy one-line apt sources.list.d entries
+  ansible.builtin.apt_repository:
+    repo: >-
+      {{ item.deb_line | default(
+        'deb [signed-by=/etc/apt/trusted.gpg.d/' ~ item.name ~ '.gpg] ' ~ item.baseurl ~ ' ' ~
+        item.deb_suite ~ ' ' ~ (item.deb_components | default(['main']) | join(' '))
+      ) }}
+    filename: "{{ item.name }}"
+    state: "{{ 'present' if (item.enabled | default(true)) else 'absent' }}"
+  loop: "{{ repo_definitions | selectattr('deb_suite', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not (repo_management_use_deb822 | bool)
+  notify: Refresh apt cache
+  tags: [patch, repo_management]
+
+- name: Set apt pin priority for repos that define one
+  ansible.builtin.copy:
+    dest: "/etc/apt/preferences.d/{{ item.name }}.pref"
+    mode: "0644"
+    content: |
+      Package: *
+      Pin: origin {{ item.baseurl | urlsplit('hostname') }}
+      Pin-Priority: {{ item.priority }}
+  loop: "{{ repo_definitions | selectattr('deb_suite', 'defined') | selectattr('priority', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [patch, repo_management]

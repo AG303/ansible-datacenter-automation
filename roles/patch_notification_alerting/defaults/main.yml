@@ -1,0 +1,32 @@
+---
+# roles/patch_notification_alerting/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Webhook target -------------------------------------------------------------
+patch_notify_webhook_enabled: true
+patch_notify_webhook_format: "slack"     # "slack", "teams", or "generic" — controls the JSON payload shape
+patch_notify_webhook_timeout: 15
+
+# The webhook URL itself is treated as a secret (it typically embeds a
+# bearer token) and should be pulled from an external secrets manager rather
+# than hardcoded. Both patterns are shown; choose one via secrets_backend
+# (see inventory/group_vars/all.yml) and set patch_notify_webhook_from_vault.
+patch_notify_webhook_from_vault: true
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/patch_notifications/webhook"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for usage):
+#   patch_notify_webhook_url: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                  engine_mount_point=vault_kv_mount, url=vault_addr).secret.url }}"
+# AWS Secrets Manager example:
+#   patch_notify_webhook_url: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# Fallback: a directly-supplied webhook URL, only used when
+# patch_notify_webhook_from_vault is false. Never commit a real URL here.
+patch_notify_webhook_url_override: ""
+
+# --- Run metadata -----------------------------------------------------------------
+patch_notify_run_label: "{{ patch_run_label | default('ad-hoc patch run') }}"   # e.g. "os_patch_rolling_update - prod web tier"
+patch_notify_include_package_diff: true

@@ -1,0 +1,53 @@
+---
+# roles/systemd_service_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+# This is a generic, reusable role for deploying ANY custom systemd unit —
+# it deliberately has no opinion about what the service actually runs.
+
+# --- Required identity (override these per service) ---------------------------
+service_name: "sample-custom-service"
+exec_start: "/usr/local/bin/sample-custom-service"
+working_directory: "/opt/{{ service_name }}"
+service_user: "svc-{{ service_name }}"
+service_group: "svc-{{ service_name }}"
+
+# --- Environment variables injected into the unit -------------------------------
+# Example:
+# env_vars:
+#   APP_ENV: production
+#   LOG_LEVEL: info
+env_vars: {}
+
+# --- systemd unit tuning ---------------------------------------------------------
+service_restart_policy: "on-failure"
+service_restart_sec: 5
+service_type: "simple"                 # "simple", "forking", "oneshot", "notify"
+service_exec_stop: ""                  # optional explicit ExecStop; blank lets systemd send SIGTERM
+service_exec_reload: ""                # optional explicit ExecReload
+service_limit_nofile: 65536
+service_wanted_by: "multi-user.target"
+
+# --- Create the service account and working directory automatically -------------
+service_manage_user: true
+service_manage_directory: true
+service_directory_mode: "0750"
+
+# --- Rolling deploy + health-check hook ------------------------------------------
+rolling_batch_size: "30%"
+service_health_check_enabled: false     # opt in when exec_start exposes an HTTP endpoint
+service_health_check_url: ""            # e.g. "http://127.0.0.1:9100/health"
+service_health_check_timeout: 30
+service_health_check_retries: 5
+service_health_check_delay: 3
+
+# --- Secrets manager integration (for env_vars containing credentials) -------------
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/systemd_services/{{ service_name }}/{{ inventory_hostname }}"
+# HashiCorp Vault example (merge into env_vars at the play/group_vars level):
+#   API_KEY: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                  engine_mount_point=vault_kv_mount, url=vault_addr).secret.api_key }}"
+# AWS Secrets Manager example:
+#   API_KEY: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

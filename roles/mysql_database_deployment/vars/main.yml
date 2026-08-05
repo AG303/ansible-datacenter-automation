@@ -1,0 +1,31 @@
+---
+# roles/mysql_database_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+mysql_packages:
+  RedHat:
+    mariadb: ["mariadb-server", "mariadb"]
+    mysql: ["mysql-server", "mysql"]
+  Debian:
+    mariadb: ["mariadb-server", "mariadb-client"]
+    mysql: ["mysql-server", "mysql-client"]
+
+mysql_service_name:
+  RedHat:
+    mariadb: mariadb
+    mysql: mysqld
+  Debian:
+    mariadb: mariadb
+    mysql: mysql
+
+mysql_config_path:
+  RedHat:
+    mariadb: /etc/my.cnf.d/50-server-tuning.cnf
+    mysql: /etc/my.cnf.d/50-server-tuning.cnf
+  Debian:
+    mariadb: /etc/mysql/mariadb.conf.d/50-server-tuning.cnf
+    mysql: /etc/mysql/mysql.conf.d/50-server-tuning.cnf
+
+mysql_socket_path: /var/lib/mysql/mysql.sock
+mysql_data_dir: /var/lib/mysql

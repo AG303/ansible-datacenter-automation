@@ -1,0 +1,58 @@
+---
+# roles/haproxy_load_balancer/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+haproxy_package_state: present
+haproxy_service_enabled: true
+haproxy_service_state: started
+
+# --- Global/defaults section tuning ------------------------------------------------
+haproxy_maxconn: 20000
+haproxy_log_facility: "local0"
+haproxy_mode: "http"
+haproxy_timeout_connect: "5s"
+haproxy_timeout_client: "50s"
+haproxy_timeout_server: "50s"
+
+# --- Stats socket / dashboard --------------------------------------------------------
+haproxy_stats_socket_path: /run/haproxy/admin.sock
+haproxy_stats_enabled: true
+haproxy_stats_bind_address: "127.0.0.1"
+haproxy_stats_port: 8404
+haproxy_stats_uri: "/stats"
+# Stats dashboard basic-auth credentials sourced from the secrets manager, never inline.
+haproxy_stats_user: "admin"
+
+# --- Backends ------------------------------------------------------------------------
+# Each entry defines one frontend/backend pair. `backend_group` names an Ansible
+# inventory group whose members become backend servers automatically (address = each
+# host's ansible_default_ipv4.address, port = backend_port).
+#
+# Example:
+# haproxy_backends:
+#   - name: web_backend
+#     frontend_bind: "*:80"
+#     backend_port: 8080
+#     backend_group: web_fleet
+#     balance_algorithm: roundrobin
+#     health_check_path: /health
+haproxy_backends: []
+
+# --- Validation / rollback safety ---------------------------------------------------
+haproxy_validate_config_before_reload: true   # runs `haproxy -c -f` against the new file before activating it
+haproxy_backup_existing_config: true
+
+# --- Secrets manager integration (stats dashboard password) --------------------------
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/haproxy/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example:
+#   haproxy_stats_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                 engine_mount_point=vault_kv_mount, url=vault_addr).secret.stats_password }}"
+# AWS Secrets Manager example:
+#   haproxy_stats_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+haproxy_stats_password: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+       engine_mount_point=vault_kv_mount, url=vault_addr).secret.stats_password }}

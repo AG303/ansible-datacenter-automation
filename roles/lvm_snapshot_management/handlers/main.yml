@@ -1,0 +1,8 @@
+---
+# roles/lvm_snapshot_management/handlers/main.yml
+# No service reload is required for LVM snapshot lifecycle operations; retained
+# for convention consistency.
+- name: Noop lvm handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for lvm_snapshot_management"
+  listen: "Rescan LVM devices"

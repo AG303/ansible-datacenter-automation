@@ -1,0 +1,22 @@
+---
+# roles/ssh_hardening/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+ssh_service_name:
+  RedHat: sshd
+  Debian: ssh
+
+ssh_config_path:
+  RedHat: /etc/ssh/sshd_config
+  Debian: /etc/ssh/sshd_config
+
+ssh_config_d_path:
+  RedHat: /etc/ssh/sshd_config.d
+  Debian: /etc/ssh/sshd_config.d
+
+ssh_package_name:
+  RedHat: openssh-server
+  Debian: openssh-server
+
+ssh_banner_path: /etc/issue.net

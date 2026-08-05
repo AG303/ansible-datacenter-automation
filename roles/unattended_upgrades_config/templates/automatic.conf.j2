@@ -1,0 +1,30 @@
+{{ ansible_managed | comment }}
+# Managed by the unattended_upgrades_config Ansible role — do not edit by hand.
+# See: https://dnf.readthedocs.io/en/latest/automatic.html
+
+[commands]
+upgrade_type = {{ dnf_automatic_upgrade_type }}
+random_sleep = 0
+network_online_timeout = 60
+download_updates = yes
+apply_updates = {{ 'yes' if auto_patch_enabled else 'no' }}
+
+[emitters]
+emit_via = {{ 'email,command' if auto_patch_notify_email else 'stdio' }}
+system_name = {{ inventory_hostname }}
+
+[email]
+email_from = dnf-automatic@{{ inventory_hostname }}
+email_to = {{ auto_patch_notify_email | default('root', true) }}
+email_host = localhost
+
+[command]
+command_format = {{ '/usr/local/bin/patch-webhook-notify.sh {}' if auto_patch_notify_webhook_url else 'true' }}
+stdin_format = {}
+
+[command_email]
+command_format = {{ '/usr/local/bin/patch-webhook-notify.sh {}' if auto_patch_notify_webhook_url else 'true' }}
+stdin_format = {}
+
+[base]
+debuglevel = 1

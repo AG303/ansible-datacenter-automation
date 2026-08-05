@@ -1,0 +1,46 @@
+---
+# roles/nodejs_app_deployment/tasks/debian.yml — Debian-family specific adjustments
+- name: Install build dependencies
+  ansible.builtin.package:
+    name: "{{ nodejs_build_dependencies['Debian'] }}"
+    state: present
+  tags: [deploy, nodejs]
+
+- name: Add NodeSource repository (DEB) when using the nodesource install method
+  ansible.builtin.shell: |
+    curl -fsSL {{ nodejs_nodesource_setup_script_url }} | bash -
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+  when: nodejs_install_method == 'nodesource'
+  tags: [deploy, nodejs]
+
+- name: Install Node.js package (nodesource method)
+  ansible.builtin.package:
+    name: "{{ nodejs_package_name['Debian'] }}"
+    state: present
+  when: nodejs_install_method == 'nodesource'
+  tags: [deploy, nodejs]
+
+- name: Install nvm for the application service user (nvm install method)
+  ansible.builtin.shell: |
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{{ nodejs_nvm_version }}/install.sh | bash
+  args:
+    creates: "/home/{{ nodejs_nvm_install_user }}/.nvm/nvm.sh"
+  become: true
+  become_user: "{{ nodejs_nvm_install_user }}"
+  when: nodejs_install_method == 'nvm'
+  tags: [deploy, nodejs]
+
+- name: Install pinned Node.js version via nvm
+  ansible.builtin.shell: |
+    export NVM_DIR="/home/{{ nodejs_nvm_install_user }}/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install {{ nodejs_major_version }}
+    nvm alias default {{ nodejs_major_version }}
+  args:
+    executable: /bin/bash
+    creates: "/home/{{ nodejs_nvm_install_user }}/.nvm/alias/default"
+  become: true
+  become_user: "{{ nodejs_nvm_install_user }}"
+  when: nodejs_install_method == 'nvm'
+  tags: [deploy, nodejs]

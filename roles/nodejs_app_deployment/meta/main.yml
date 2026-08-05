@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: nodejs_app_deployment
+  author: DevOps Automation Collection
+  description: Installs Node.js, deploys an application release (git or tarball), runs npm ci, and manages it as a systemd service with rolling deploy + health check.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - deploy
+    - nodejs
+    - application
+dependencies: []

@@ -1,0 +1,9 @@
+---
+# roles/auditd_configuration/tasks/debian.yml — Debian-family specific adjustments
+- name: Ensure audispd-plugins equivalent packages are present (syslog forwarding support)
+  ansible.builtin.package:
+    name:
+      - audispd-plugins
+    state: present
+  when: auditd_forward_to_syslog_enabled | bool
+  tags: [security, auditd]

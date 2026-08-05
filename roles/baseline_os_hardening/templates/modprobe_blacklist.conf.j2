@@ -1,0 +1,10 @@
+{{ ansible_managed | comment }}
+# Managed by the baseline_os_hardening Ansible role — do not edit by hand.
+# Disables loading of unused filesystem kernel modules that have no
+# legitimate use case on a typical datacenter server and have a history of
+# kernel-level vulnerabilities when mounted from untrusted media.
+
+{% for module in baseline_disable_filesystems %}
+install {{ module }} /bin/false
+blacklist {{ module }}
+{% endfor %}

@@ -1,0 +1,28 @@
+---
+# roles/auditd_configuration/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+auditd_package_name:
+  RedHat: audit
+  Debian: auditd
+
+auditd_service_name:
+  RedHat: auditd
+  Debian: auditd
+
+auditd_conf_path:
+  RedHat: /etc/audit/auditd.conf
+  Debian: /etc/audit/auditd.conf
+
+auditd_rules_path:
+  RedHat: /etc/audit/rules.d/audit.rules
+  Debian: /etc/audit/rules.d/audit.rules
+
+auditd_syslog_plugin_conf_path:
+  RedHat: /etc/audit/plugins.d/syslog.conf
+  Debian: /etc/audit/plugins.d/au-remote.conf
+
+auditd_auth_log_path:
+  RedHat: /var/log/secure
+  Debian: /var/log/auth.log

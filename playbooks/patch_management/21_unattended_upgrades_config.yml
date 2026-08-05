@@ -1,0 +1,8 @@
+---
+- name: Configure automatic patching cadence (dnf-automatic / unattended-upgrades)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: unattended_upgrades_config
+  tags: [patch, unattended_upgrades_config]

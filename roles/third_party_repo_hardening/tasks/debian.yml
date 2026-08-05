@@ -1,0 +1,65 @@
+---
+# roles/third_party_repo_hardening/tasks/debian.yml — PPA-style repos with apt pinning
+- name: Ensure apt keyrings directory exists
+  ansible.builtin.file:
+    path: "{{ third_party_keyring_dir }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  tags: [patch, third_party_repo_hardening]
+
+- name: Download and store GPG keys for third-party repos
+  ansible.builtin.get_url:
+    url: "{{ item.gpgkey }}"
+    dest: "{{ third_party_keyring_dir }}/{{ item.name }}.asc"
+    mode: "0644"
+  loop: "{{ third_party_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.gpgkey is defined
+  tags: [patch, third_party_repo_hardening]
+
+- name: Deploy third-party repo definitions (deb822 format, signed and scoped)
+  ansible.builtin.deb822_repository:
+    name: "{{ item.name }}"
+    types: deb
+    uris: "{{ item.baseurl }}"
+    suites: "{{ item.deb_suite }}"
+    components: "{{ item.deb_components | default(['main']) }}"
+    signed_by: "{{ third_party_keyring_dir }}/{{ item.name }}.asc"
+    enabled: "{{ item.enabled | default(true) }}"
+  loop: "{{ third_party_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Refresh apt cache after third-party repo change
+  tags: [patch, third_party_repo_hardening]
+
+- name: Pin third-party repos below OS base-package priority (apt preferences)
+  ansible.builtin.copy:
+    dest: "/etc/apt/preferences.d/{{ item.name }}.pref"
+    mode: "0644"
+    content: |
+      # Managed by the third_party_repo_hardening Ansible role — do not edit by hand.
+      # Keeps {{ item.name }} from shadowing packages available in the OS base repos.
+      Package: *
+      Pin: origin {{ item.baseurl | urlsplit('hostname') }}
+      Pin-Priority: {{ item.pin_priority | default(100) }}
+  loop: "{{ third_party_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [patch, third_party_repo_hardening]
+
+- name: Restrict third-party repos to an explicit allow-list of packages (optional)
+  ansible.builtin.copy:
+    dest: "/etc/apt/preferences.d/{{ item.name }}-allowlist.pref"
+    mode: "0644"
+    content: |
+      # Managed by the third_party_repo_hardening Ansible role — do not edit by hand.
+      Package: {{ item.allowed_packages | join(' ') }}
+      Pin: origin {{ item.baseurl | urlsplit('hostname') }}
+      Pin-Priority: 900
+  loop: "{{ third_party_repos | selectattr('allowed_packages', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [patch, third_party_repo_hardening]

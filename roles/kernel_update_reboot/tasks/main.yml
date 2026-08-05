@@ -1,0 +1,123 @@
+---
+# roles/kernel_update_reboot/tasks/main.yml
+# Updates the kernel package, detects whether the running kernel differs from
+# the newest installed kernel, and reboots safely with ansible.builtin.reboot
+# (never a raw shell reboot). Intended to run with serial: 1 (see defaults)
+# and an operator approval gate between batches.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "kernel_update_reboot supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, kernel_update_reboot]
+
+- name: Record currently running kernel version
+  ansible.builtin.command: "{{ kernel_running_version_command[ansible_facts['os_family']] }}"
+  register: kernel_running_before
+  changed_when: false
+  tags: [patch, kernel_update_reboot]
+
+- name: Include RedHat-family kernel update tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, kernel_update_reboot]
+
+- name: Include Debian-family kernel update tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, kernel_update_reboot]
+
+- name: Determine newest kernel installed on disk
+  ansible.builtin.shell: "{{ kernel_latest_installed_command[ansible_facts['os_family']] }}"
+  register: kernel_latest_installed
+  changed_when: false
+  args:
+    executable: /bin/bash
+  tags: [patch, kernel_update_reboot]
+
+- name: Determine whether a reboot is required
+  ansible.builtin.set_fact:
+    kernel_reboot_required: >-
+      {{ kernel_latest_installed.stdout is defined
+         and kernel_latest_installed.stdout | trim != ''
+         and kernel_latest_installed.stdout | trim not in kernel_running_before.stdout }}
+  changed_when: kernel_reboot_required
+  tags: [patch, kernel_update_reboot]
+
+- name: Display reboot requirement status
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: running kernel = {{ kernel_running_before.stdout }},
+      latest installed = {{ kernel_latest_installed.stdout }},
+      reboot required = {{ kernel_reboot_required }}
+  tags: [patch, kernel_update_reboot]
+
+- name: Reboot host to activate new kernel
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ kernel_reboot_timeout }}"
+    connect_timeout: "{{ kernel_reboot_connect_timeout }}"
+    pre_reboot_delay: "{{ kernel_reboot_pre_reboot_delay }}"
+    post_reboot_delay: "{{ kernel_reboot_post_reboot_delay }}"
+    test_command: "{{ kernel_reboot_test_command }}"
+    msg: "{{ kernel_reboot_msg }}"
+  when:
+    - kernel_reboot_required | bool
+    - kernel_reboot_enabled | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Record kernel version after reboot
+  ansible.builtin.command: "{{ kernel_running_version_command[ansible_facts['os_family']] }}"
+  register: kernel_running_after
+  changed_when: false
+  when:
+    - kernel_reboot_required | bool
+    - kernel_reboot_enabled | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Post-reboot health check — verify target service is active
+  ansible.builtin.systemd:
+    name: "{{ kernel_reboot_health_check_service }}"
+  register: kernel_post_service_status
+  when:
+    - kernel_reboot_required | bool
+    - kernel_reboot_enabled | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Fail this host if the post-reboot health check did not pass
+  ansible.builtin.assert:
+    that:
+      - kernel_post_service_status.status.ActiveState == 'active'
+    fail_msg: >-
+      Post-reboot health check FAILED for {{ kernel_reboot_health_check_service }} on {{ inventory_hostname }}
+      after kernel update. Investigate before approving the next batch.
+  when:
+    - kernel_reboot_required | bool
+    - kernel_reboot_enabled | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Confirm kernel version changed after reboot
+  ansible.builtin.assert:
+    that:
+      - kernel_running_after.stdout != kernel_running_before.stdout
+    fail_msg: >-
+      Kernel version on {{ inventory_hostname }} did not change after reboot
+      ({{ kernel_running_after.stdout }}). The new kernel may not be set as default in the bootloader.
+    success_msg: >-
+      Kernel on {{ inventory_hostname }} updated from {{ kernel_running_before.stdout }}
+      to {{ kernel_running_after.stdout }}.
+  when:
+    - kernel_reboot_required | bool
+    - kernel_reboot_enabled | bool
+  tags: [patch, kernel_update_reboot]
+
+- name: Operator approval gate before proceeding to next batch
+  ansible.builtin.pause:
+    prompt: "{{ kernel_reboot_pause_prompt }}"
+  when:
+    - kernel_reboot_pause_enabled | bool
+    - kernel_reboot_required | bool
+    - kernel_reboot_enabled | bool
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, kernel_update_reboot]

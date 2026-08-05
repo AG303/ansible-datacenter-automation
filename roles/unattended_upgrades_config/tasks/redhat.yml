@@ -1,0 +1,44 @@
+---
+# roles/unattended_upgrades_config/tasks/redhat.yml — dnf-automatic timer config
+- name: Install dnf-automatic
+  ansible.builtin.dnf:
+    name: dnf-automatic
+    state: present
+  tags: [patch, unattended_upgrades_config]
+
+- name: Deploy dnf-automatic configuration
+  ansible.builtin.template:
+    src: automatic.conf.j2
+    dest: /etc/dnf/automatic.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart dnf-automatic timer
+  tags: [patch, unattended_upgrades_config]
+
+- name: Ensure dnf-automatic timer drop-in directory exists
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ auto_patch_timer_name['RedHat'] }}.d"
+    state: directory
+    mode: "0755"
+  tags: [patch, unattended_upgrades_config]
+
+- name: Override dnf-automatic timer schedule via systemd drop-in
+  ansible.builtin.template:
+    src: dnf-automatic-timer-override.conf.j2
+    dest: "/etc/systemd/system/{{ auto_patch_timer_name['RedHat'] }}.d/override.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart dnf-automatic timer
+  tags: [patch, unattended_upgrades_config]
+
+- name: Enable and start the dnf-automatic timer
+  ansible.builtin.systemd:
+    name: "{{ auto_patch_timer_name['RedHat'] }}"
+    enabled: "{{ auto_patch_enabled | bool }}"
+    state: "{{ 'started' if auto_patch_enabled | bool else 'stopped' }}"
+    daemon_reload: true
+  tags: [patch, unattended_upgrades_config]

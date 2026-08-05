@@ -1,0 +1,188 @@
+---
+# roles/database_backup_restore/tasks/restore.yml — fetch latest/named dump and load
+- name: Require explicit confirmation before restoring
+  ansible.builtin.assert:
+    that:
+      - db_restore_confirm | bool
+    fail_msg: >-
+      Refusing to restore: set db_restore_confirm=true explicitly to confirm this
+      destructive action overwrites data in {{ db_name }} on {{ inventory_hostname }}.
+  tags: [dr, dbbackup]
+
+- name: Pause for operator confirmation before destructive restore
+  ansible.builtin.pause:
+    prompt: >-
+      About to RESTORE database '{{ db_name }}' ({{ db_engine }}) on {{ inventory_hostname }}
+      from {{ db_restore_target_file if db_restore_target_file else 'the latest available backup' }}.
+      This may overwrite existing data. Press Enter to continue or Ctrl+C then A to abort.
+  tags: [dr, dbbackup]
+
+- name: List available S3 backups to find the latest object
+  amazon.aws.s3_object:
+    bucket: "{{ db_backup_s3_bucket }}"
+    prefix: "{{ db_backup_s3_prefix }}/"
+    mode: list
+    region: "{{ aws_region }}"
+  register: db_s3_listing
+  when:
+    - db_backup_destination_type == 's3'
+    - db_restore_target_file | length == 0
+  tags: [dr, dbbackup]
+
+- name: Determine the latest S3 dump object key
+  ansible.builtin.set_fact:
+    db_restore_source_key: "{{ (db_s3_listing.s3_keys | sort | last) }}"
+  when:
+    - db_backup_destination_type == 's3'
+    - db_restore_target_file | length == 0
+  tags: [dr, dbbackup]
+
+- name: Use explicitly named S3 dump object key
+  ansible.builtin.set_fact:
+    db_restore_source_key: "{{ db_backup_s3_prefix }}/{{ db_restore_target_file }}"
+  when:
+    - db_backup_destination_type == 's3'
+    - db_restore_target_file | length > 0
+  tags: [dr, dbbackup]
+
+- name: Download dump from S3 for restore
+  amazon.aws.s3_object:
+    bucket: "{{ db_backup_s3_bucket }}"
+    object: "{{ db_restore_source_key }}"
+    dest: "{{ db_dump_local_dir }}/{{ db_restore_source_key | basename }}"
+    mode: get
+    region: "{{ aws_region }}"
+  register: db_restore_download
+  when: db_backup_destination_type == 's3'
+  tags: [dr, dbbackup]
+
+- name: Find latest dump on NFS backup destination
+  ansible.builtin.find:
+    paths: "{{ db_backup_nfs_path }}"
+    patterns: "{{ db_name }}-*.sql.gz"
+  register: db_nfs_listing
+  when:
+    - db_backup_destination_type == 'nfs'
+    - db_restore_target_file | length == 0
+  tags: [dr, dbbackup]
+
+- name: Copy latest NFS dump into local staging for restore
+  ansible.builtin.copy:
+    src: "{{ (db_nfs_listing.files | sort(attribute='mtime') | last).path }}"
+    dest: "{{ db_dump_local_dir }}/restore-source.sql.gz"
+    remote_src: true
+    mode: "0600"
+  when:
+    - db_backup_destination_type == 'nfs'
+    - db_restore_target_file | length == 0
+  tags: [dr, dbbackup]
+
+- name: Copy named NFS dump into local staging for restore
+  ansible.builtin.copy:
+    src: "{{ db_backup_nfs_path }}/{{ db_restore_target_file }}"
+    dest: "{{ db_dump_local_dir }}/restore-source.sql.gz"
+    remote_src: true
+    mode: "0600"
+  when:
+    - db_backup_destination_type == 'nfs'
+    - db_restore_target_file | length > 0
+  tags: [dr, dbbackup]
+
+- name: Normalize local restore source filename for S3-sourced dumps
+  ansible.builtin.copy:
+    src: "{{ db_dump_local_dir }}/{{ db_restore_source_key | basename }}"
+    dest: "{{ db_dump_local_dir }}/restore-source.sql.gz"
+    remote_src: true
+    mode: "0600"
+  when: db_backup_destination_type == 's3'
+  tags: [dr, dbbackup]
+
+- name: Drop and recreate target MySQL database before restore (optional)
+  community.mysql.mysql_db:
+    name: "{{ db_name }}"
+    state: absent
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_admin_user }}"
+    login_password: "{{ db_admin_password }}"
+  when:
+    - db_engine == 'mysql'
+    - db_restore_drop_existing | bool
+  no_log: true
+  tags: [dr, dbbackup]
+
+- name: Ensure target MySQL database exists
+  community.mysql.mysql_db:
+    name: "{{ db_name }}"
+    state: present
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_admin_user }}"
+    login_password: "{{ db_admin_password }}"
+  when: db_engine == 'mysql'
+  no_log: true
+  tags: [dr, dbbackup]
+
+- name: Restore MySQL database from dump
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    gunzip -c {{ db_dump_local_dir }}/restore-source.sql.gz |
+    mysql --host={{ db_host }} --port={{ db_port }} --user={{ db_admin_user }}
+    --password={{ db_admin_password }} {{ db_name }}
+  args:
+    executable: /bin/bash
+  changed_when: true
+  no_log: true
+  when: db_engine == 'mysql'
+  tags: [dr, dbbackup]
+
+- name: Drop and recreate target PostgreSQL database before restore (optional)
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+    state: absent
+    login_host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    login_user: "{{ db_admin_user }}"
+    login_password: "{{ db_admin_password }}"
+  when:
+    - db_engine == 'postgresql'
+    - db_restore_drop_existing | bool
+  no_log: true
+  tags: [dr, dbbackup]
+
+- name: Ensure target PostgreSQL database exists
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+    state: present
+    login_host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    login_user: "{{ db_admin_user }}"
+    login_password: "{{ db_admin_password }}"
+  when: db_engine == 'postgresql'
+  no_log: true
+  tags: [dr, dbbackup]
+
+- name: Restore PostgreSQL database from custom-format dump
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    gunzip -c {{ db_dump_local_dir }}/restore-source.sql.gz > {{ db_dump_local_dir }}/restore-source.dump &&
+    PGPASSWORD={{ db_admin_password }} pg_restore --host={{ db_host }} --port={{ db_port }}
+    --username={{ db_admin_user }} --dbname={{ db_name }} --clean --if-exists
+    {{ db_dump_local_dir }}/restore-source.dump
+  args:
+    executable: /bin/bash
+  changed_when: true
+  no_log: true
+  when: db_engine == 'postgresql'
+  tags: [dr, dbbackup]
+
+- name: Notify restore completion
+  ansible.builtin.uri:
+    url: "{{ db_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "{{ db_engine }} RESTORE of {{ db_name }} completed on {{ inventory_hostname }}"
+    status_code: [200, 201, 204]
+  when: db_notify_webhook_url | length > 0
+  tags: [dr, dbbackup]

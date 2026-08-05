@@ -1,0 +1,7 @@
+---
+# roles/replication_health_check/handlers/main.yml
+# This role is purely a read/report role; no service to restart or reload.
+- name: Noop replication check handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for replication_health_check"
+  listen: "Archive replication report"

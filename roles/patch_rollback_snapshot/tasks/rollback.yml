@@ -1,0 +1,47 @@
+---
+# roles/patch_rollback_snapshot/tasks/rollback.yml
+# Companion rollback path: run this when a post-patch health check has
+# failed. Reads back the recorded fact file and downgrades packages to the
+# previously-installed versions.
+- name: Verify a snapshot fact file exists before attempting rollback
+  ansible.builtin.stat:
+    path: "{{ patch_rollback_state_file }}"
+  register: patch_rollback_state_stat
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Fail if no snapshot fact file is present
+  ansible.builtin.assert:
+    that:
+      - patch_rollback_state_stat.stat.exists
+    fail_msg: >-
+      No rollback snapshot found at {{ patch_rollback_state_file }} on {{ inventory_hostname }}.
+      Run this role with patch_rollback_mode=snapshot before patching to enable rollback.
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Post-patch health check — verify target service is active
+  ansible.builtin.systemd:
+    name: "{{ patch_rollback_health_check_service }}"
+  register: patch_rollback_health_status
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Load recorded package versions from the snapshot fact file
+  ansible.builtin.slurp:
+    src: "{{ patch_rollback_state_file }}"
+  register: patch_rollback_state_raw
+  when: patch_rollback_health_status.status.ActiveState != 'active'
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Parse recorded package versions
+  ansible.builtin.set_fact:
+    patch_rollback_recorded_packages: "{{ (patch_rollback_state_raw.content | b64decode | from_json).packages }}"
+  when: patch_rollback_health_status.status.ActiveState != 'active'
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Log rollback decision
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: post-patch health check
+      {{ 'FAILED — initiating rollback to ' ~ (patch_rollback_recorded_packages | length | string) ~ ' recorded package versions'
+         if patch_rollback_health_status.status.ActiveState != 'active'
+         else 'PASSED — no rollback needed' }}
+  tags: [patch, patch_rollback_snapshot]

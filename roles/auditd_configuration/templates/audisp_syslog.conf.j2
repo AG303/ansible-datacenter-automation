@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+# Managed by the auditd_configuration Ansible role — do not edit by hand.
+# Forwards audit events to a remote syslog/SIEM collector.
+
+active = yes
+direction = out
+path = builtin_syslog
+type = builtin
+args = LOG_INFO
+format = string
+
+# Remote target (consumed by rsyslog/syslog-ng forwarding rule on this host,
+# pointed at {{ auditd_remote_syslog_server }}:{{ auditd_remote_syslog_port }}/{{ auditd_remote_syslog_protocol }})

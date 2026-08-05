@@ -1,0 +1,58 @@
+---
+# roles/password_policy_enforcement/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "password_policy_enforcement supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, pwpolicy]
+
+- name: Ensure pwquality package is installed
+  ansible.builtin.package:
+    name: "{{ pwquality_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, pwpolicy]
+
+- name: Deploy pwquality.conf from template
+  ansible.builtin.template:
+    src: pwquality.conf.j2
+    dest: "{{ pwquality_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  tags: [security, pwpolicy]
+
+- name: Enforce PASS_MAX_DAYS in login.defs
+  ansible.builtin.lineinfile:
+    path: "{{ password_login_defs_path }}"
+    regexp: '^PASS_MAX_DAYS'
+    line: "PASS_MAX_DAYS   {{ password_max_days }}"
+    backup: true
+  tags: [security, pwpolicy]
+
+- name: Enforce PASS_MIN_DAYS in login.defs
+  ansible.builtin.lineinfile:
+    path: "{{ password_login_defs_path }}"
+    regexp: '^PASS_MIN_DAYS'
+    line: "PASS_MIN_DAYS   {{ password_min_days }}"
+    backup: true
+  tags: [security, pwpolicy]
+
+- name: Enforce PASS_WARN_AGE in login.defs
+  ansible.builtin.lineinfile:
+    path: "{{ password_login_defs_path }}"
+    regexp: '^PASS_WARN_AGE'
+    line: "PASS_WARN_AGE   {{ password_warn_age }}"
+    backup: true
+  tags: [security, pwpolicy]
+
+- name: Include RedHat-specific tasks (PAM system-auth/password-auth via authselect)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [security, pwpolicy]
+
+- name: Include Debian-specific tasks (PAM common-password/common-auth via pam-auth-update)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [security, pwpolicy]

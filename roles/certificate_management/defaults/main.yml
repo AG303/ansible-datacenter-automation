@@ -1,0 +1,45 @@
+---
+# roles/certificate_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Certificate deployment list ---------------------------------------
+# Each entry describes one certificate/key pair to deploy or rotate. The
+# private key material and full chain are pulled from the external secrets
+# manager at task-run time — never inline literal PEM content here.
+# `secret_backend` selects which lookup pattern is used per-entry.
+#
+# Example:
+# certificate_deployments:
+#   - name: www-example-com
+#     secret_backend: vault           # vault|aws_secrets_manager
+#     secret_path: "datacenter/pki/certs/www.example.com"
+#     cert_dest: /etc/pki/tls/certs/www.example.com.crt
+#     key_dest: /etc/pki/tls/private/www.example.com.key
+#     chain_dest: /etc/pki/tls/certs/www.example.com-chain.crt
+#     owner: root
+#     group: nginx
+#     key_mode: "0600"
+#     cert_mode: "0644"
+#     notify_service: nginx
+certificate_deployments: []
+
+# --- Expiry monitoring ----------------------------------------------------
+cert_expiry_warning_days: 30
+
+# --- Secrets manager integration -------------------------------------------
+# Both lookup patterns are illustrated for reference; the per-deployment
+# `secret_backend` field selects which one tasks/main.yml actually uses.
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "pki"
+vault_secret_path: "datacenter/pki/certs/{{ item.name }}"
+# HashiCorp Vault PKI/KV example (see tasks/main.yml for usage):
+#   cert_bundle: "{{ lookup('community.hashi_vault.vault_kv2_get', item.secret_path,
+#                     engine_mount_point=vault_kv_mount, url=vault_addr).secret }}"
+# AWS Secrets Manager example:
+#   cert_bundle: "{{ lookup('amazon.aws.aws_secret', item.secret_path, region=aws_region) }}"
+aws_region: "us-east-1"
+
+# --- Backup of previous cert material before rotation -----------------------
+cert_backup_before_rotation: true
+cert_backup_dir: /var/backups/tls_certs

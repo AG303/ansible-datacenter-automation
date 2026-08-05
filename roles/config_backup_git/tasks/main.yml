@@ -1,0 +1,136 @@
+---
+# roles/config_backup_git/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "config_backup_git supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, configgit]
+
+- name: Ensure git package is installed
+  ansible.builtin.package:
+    name: "{{ config_backup_git_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, configgit]
+
+- name: Resolve backup-push SSH private key from HashiCorp Vault
+  ansible.builtin.set_fact:
+    config_backup_ssh_private_key: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                                        engine_mount_point=vault_kv_mount, url=vault_addr).secret.private_key }}"
+  no_log: true
+  when:
+    - config_backup_remote_enabled | bool
+    - config_backup_ssh_key_source == 'vault'
+  tags: [dr, configgit]
+
+- name: Resolve backup-push SSH private key from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    config_backup_ssh_private_key: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  no_log: true
+  when:
+    - config_backup_remote_enabled | bool
+    - config_backup_ssh_key_source == 'aws_secrets_manager'
+  tags: [dr, configgit]
+
+- name: Install SSH private key for pushing to the remote bare repo
+  ansible.builtin.copy:
+    content: "{{ config_backup_ssh_private_key }}\n"
+    dest: "{{ config_backup_ssh_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: config_backup_remote_enabled | bool
+  tags: [dr, configgit]
+
+- name: Ensure the local git working directory exists
+  ansible.builtin.file:
+    path: "{{ config_backup_local_repo }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, configgit]
+
+- name: Initialize the local git repository (first run only)
+  ansible.builtin.command:
+    cmd: "git init"
+  args:
+    chdir: "{{ config_backup_local_repo }}"
+    creates: "{{ config_backup_local_repo }}/.git"
+  tags: [dr, configgit]
+
+- name: Configure git commit author identity
+  community.general.git_config:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    repo: "{{ config_backup_local_repo }}"
+    scope: local
+  loop:
+    - { key: "user.name", value: "{{ config_backup_commit_author_name }}" }
+    - { key: "user.email", value: "{{ config_backup_commit_author_email }}" }
+  tags: [dr, configgit]
+
+- name: Configure the remote bare repository (if enabled)
+  community.general.git_config:
+    name: "remote.origin.url"
+    value: "{{ config_backup_remote_url }}"
+    repo: "{{ config_backup_local_repo }}"
+    scope: local
+  when: config_backup_remote_enabled | bool
+  tags: [dr, configgit]
+
+- name: Mirror each tracked configuration path into the working tree
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ config_backup_local_repo }}{{ item }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: preserve
+  loop: "{{ config_backup_paths }}"
+  loop_control:
+    label: "{{ item }}"
+  register: config_backup_copy_result
+  ignore_errors: true
+  tags: [dr, configgit]
+
+- name: Check git status for uncommitted changes
+  ansible.builtin.command:
+    cmd: "git status --porcelain"
+  args:
+    chdir: "{{ config_backup_local_repo }}"
+  register: config_backup_git_status
+  changed_when: false
+  tags: [dr, configgit]
+
+- name: Stage all tracked configuration changes
+  ansible.builtin.command:
+    cmd: "git add -A"
+  args:
+    chdir: "{{ config_backup_local_repo }}"
+  when: config_backup_git_status.stdout | length > 0
+  changed_when: true
+  tags: [dr, configgit]
+
+- name: Commit configuration snapshot
+  ansible.builtin.command:
+    cmd: "git commit -m \"{{ config_backup_commit_message }}\""
+  args:
+    chdir: "{{ config_backup_local_repo }}"
+  when: config_backup_git_status.stdout | length > 0
+  changed_when: true
+  tags: [dr, configgit]
+
+- name: Push configuration snapshot to the remote bare repository
+  ansible.builtin.command:
+    cmd: "git push origin HEAD:refs/heads/main"
+  args:
+    chdir: "{{ config_backup_local_repo }}"
+  environment:
+    GIT_SSH_COMMAND: "ssh -i {{ config_backup_ssh_key_path }} -o StrictHostKeyChecking=accept-new"
+  when:
+    - config_backup_remote_enabled | bool
+    - config_backup_git_status.stdout | length > 0
+  changed_when: true
+  tags: [dr, configgit]

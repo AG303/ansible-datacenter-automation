@@ -1,0 +1,109 @@
+---
+# roles/cross_region_data_sync/tasks/sync_rsync.yml
+# Syncs application data directories from this primary-site host to the DR-site
+# hosts using the ansible.posix.synchronize module (rsync under the hood) over SSH.
+- name: Build the rsync extra-options list (bandwidth limit + excludes)
+  ansible.builtin.set_fact:
+    cross_region_rsync_opts: >-
+      {{ (['--bwlimit=' + (cross_region_rsync_bwlimit_kbps | string)] if cross_region_rsync_bwlimit_kbps | int > 0 else [])
+      + (cross_region_rsync_excludes | map('regex_replace', '^(.*)$', '--exclude=\1') | list) }}
+  tags: [dr, crossregionsync]
+
+- name: Sync data paths to each DR-site host via rsync
+  ansible.posix.synchronize:
+    src: "{{ item.0.src }}"
+    dest: "{{ cross_region_dest_user }}@{{ hostvars[item.1]['ansible_host'] | default(item.1) }}:{{ item.0.dest }}"
+    archive: "{{ cross_region_rsync_archive }}"
+    delete: "{{ cross_region_rsync_delete }}"
+    rsync_opts: "{{ cross_region_rsync_opts }}"
+  loop: "{{ cross_region_sync_paths | product(groups[cross_region_dest_host_group]) | list }}"
+  loop_control:
+    label: "{{ item.0.src }} -> {{ item.1 }}:{{ item.0.dest }}"
+  environment:
+    RSYNC_RSH: "ssh -i {{ cross_region_ssh_key_path }} -o StrictHostKeyChecking=accept-new"
+  register: cross_region_rsync_result
+  tags: [dr, crossregionsync]
+
+- name: Determine sync-lag by comparing latest file mtimes (source vs DR-site)
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    find {{ item.src }} -type f -printf '%T@\n' | sort -n | tail -1
+  args:
+    executable: /bin/bash
+  loop: "{{ cross_region_sync_paths }}"
+  loop_control:
+    label: "{{ item.src }}"
+  register: cross_region_source_latest
+  changed_when: false
+  failed_when: false
+  tags: [dr, crossregionsync]
+
+- name: Determine latest file mtime at the DR-site destination
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    find {{ item.dest }} -type f -printf '%T@\n' | sort -n | tail -1
+  args:
+    executable: /bin/bash
+  loop: "{{ cross_region_sync_paths }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  register: cross_region_dest_latest
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ groups[cross_region_dest_host_group][0] }}"
+  tags: [dr, crossregionsync]
+
+- name: Compute sync lag per path in seconds
+  ansible.builtin.set_fact:
+    cross_region_sync_lag_seconds: >-
+      {{ cross_region_sync_lag_seconds | default([]) + [
+        ((cross_region_source_latest.results[idx].stdout | default('0') | float) -
+        (cross_region_dest_latest.results[idx].stdout | default('0') | float)) | abs | round(0) | int
+      ] }}
+  loop: "{{ cross_region_sync_paths }}"
+  loop_control:
+    index_var: idx
+    label: "{{ item.src }}"
+  tags: [dr, crossregionsync]
+
+- name: Compile cross-region sync lag report
+  ansible.builtin.set_fact:
+    cross_region_sync_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      tool: rsync
+      dest_group: "{{ cross_region_dest_host_group }}"
+      max_lag_seconds: "{{ cross_region_sync_lag_seconds | max }}"
+      lag_within_threshold: "{{ (cross_region_sync_lag_seconds | max) <= cross_region_max_sync_lag_seconds }}"
+  tags: [dr, crossregionsync]
+
+- name: Ensure sync report directory exists
+  ansible.builtin.file:
+    path: "{{ cross_region_sync_report_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [dr, crossregionsync]
+
+- name: Write cross-region sync lag report to disk
+  ansible.builtin.copy:
+    content: "{{ cross_region_sync_report | to_nice_json }}\n"
+    dest: "{{ cross_region_sync_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, crossregionsync]
+
+- name: Notify if sync lag exceeds threshold
+  ansible.builtin.uri:
+    url: "{{ cross_region_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "Cross-region sync lag ALERT on {{ inventory_hostname }}: {{ cross_region_sync_report }}"
+    status_code: [200, 201, 204]
+  when:
+    - cross_region_notify_webhook_url | length > 0
+    - not (cross_region_sync_report.lag_within_threshold | bool)
+  tags: [dr, crossregionsync]

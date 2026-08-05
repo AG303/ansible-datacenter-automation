@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: ntp_time_sync
+  author: DevOps Automation Collection
+  description: Installs and configures chronyd (with an optional systemd-timesyncd fallback on Debian) for NTP time synchronization, timezone, and sync verification.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - ntp
+    - timesync
+dependencies: []

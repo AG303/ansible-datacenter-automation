@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: baseline_os_hardening
+  author: DevOps Automation Collection
+  description: General best-practice OS baseline hardening — disables unused filesystem kernel modules, applies sysctl network/kernel hardening, restricts core dumps, removes insecure legacy services, and hardens /tmp mount options. Not mapped to any named compliance framework.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - baseline
+    - hardening
+dependencies: []

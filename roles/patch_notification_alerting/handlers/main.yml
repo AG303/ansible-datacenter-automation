@@ -1,0 +1,5 @@
+---
+# roles/patch_notification_alerting/handlers/main.yml
+# This role only aggregates facts and performs an outbound HTTP POST — no
+# local service state is changed, so no handlers are required. File kept for
+# structural consistency across the collection.

@@ -1,0 +1,18 @@
+---
+# roles/unattended_upgrades_config/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "unattended_upgrades_config supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, unattended_upgrades_config]
+
+- name: Include RedHat-family dnf-automatic configuration tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, unattended_upgrades_config]
+
+- name: Include Debian-family unattended-upgrades configuration tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, unattended_upgrades_config]

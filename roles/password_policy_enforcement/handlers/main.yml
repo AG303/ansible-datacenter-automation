@@ -1,0 +1,7 @@
+---
+# roles/password_policy_enforcement/handlers/main.yml
+# PAM and login.defs changes apply immediately to new login sessions; no
+# service restart is required or possible for these files.
+- name: Notify PAM policy change applied
+  ansible.builtin.debug:
+    msg: "Password/PAM policy updated — takes effect on the next new login/password-change attempt."

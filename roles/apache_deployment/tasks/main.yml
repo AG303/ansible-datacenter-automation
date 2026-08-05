@@ -1,0 +1,116 @@
+---
+# roles/apache_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "apache_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, apache]
+
+- name: Ensure httpd/apache2 package is installed
+  ansible.builtin.package:
+    name: "{{ apache_package_name[ansible_facts['os_family']] }}"
+    state: "{{ apache_package_state }}"
+  tags: [deploy, apache]
+
+- name: Include RedHat-specific tasks (conf.d includes, firewalld, SELinux)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, apache]
+
+- name: Include Debian-specific tasks (a2enmod/a2ensite equivalents, ufw)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, apache]
+
+- name: Ensure vhost directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ apache_vhost_dir[ansible_facts['os_family']] }}"
+    - "{{ apache_vhost_enabled_dir[ansible_facts['os_family']] }}"
+  tags: [deploy, apache]
+
+- name: Deploy main httpd/apache2 config from template
+  ansible.builtin.template:
+    src: apache.conf.j2
+    dest: "{{ apache_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "{{ ('/usr/sbin/httpd -t -f %s' if ansible_facts['os_family'] == 'RedHat' else '/usr/sbin/apache2ctl -t -f %s') }}"
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Remove distro default vhost (avoid conflicting catch-all page)
+  ansible.builtin.file:
+    path: "{{ apache_default_vhost_file[ansible_facts['os_family']] }}"
+    state: absent
+  when: apache_vhosts | length > 0
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Render one vhost file per site
+  ansible.builtin.template:
+    src: vhost.conf.j2
+    dest: "{{ apache_vhost_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ apache_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Enable vhost via symlink (Debian a2ensite-equivalent)
+  ansible.builtin.file:
+    src: "{{ apache_vhost_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    dest: "{{ apache_vhost_enabled_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    state: link
+    force: true
+  loop: "{{ apache_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - item.enabled | default(true) | bool
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Disable vhost by removing symlink (Debian a2dissite-equivalent)
+  ansible.builtin.file:
+    path: "{{ apache_vhost_enabled_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    state: absent
+  loop: "{{ apache_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - not (item.enabled | default(true) | bool)
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Remove RedHat conf.d file when vhost is disabled (served directly, no symlink layer)
+  ansible.builtin.file:
+    path: "{{ apache_vhost_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    state: absent
+  loop: "{{ apache_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not (item.enabled | default(true) | bool)
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Ensure apache service is enabled and running
+  ansible.builtin.service:
+    name: "{{ apache_service_name[ansible_facts['os_family']] }}"
+    state: "{{ apache_service_state }}"
+    enabled: "{{ apache_service_enabled | bool }}"
+  tags: [deploy, apache]

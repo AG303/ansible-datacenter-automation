@@ -1,0 +1,5 @@
+---
+# roles/patch_compliance_report/handlers/main.yml
+# This role is a read-only reporting role — no service state is changed,
+# so no handlers are required. File kept for structural consistency across
+# the collection.

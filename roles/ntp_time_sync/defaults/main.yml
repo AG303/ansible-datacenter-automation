@@ -1,0 +1,37 @@
+---
+# roles/ntp_time_sync/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Time sync provider -----------------------------------------------------
+# chrony is preferred everywhere; systemd-timesyncd is offered as a
+# lightweight fallback for minimal Debian/Ubuntu images that don't need
+# full chrony features (only used if ntp_use_systemd_timesyncd_fallback: true
+# and chrony is not otherwise required).
+ntp_use_systemd_timesyncd_fallback: false
+
+# --- NTP servers -------------------------------------------------------------
+ntp_servers:
+  - "0.pool.ntp.org iburst"
+  - "1.pool.ntp.org iburst"
+  - "2.pool.ntp.org iburst"
+  - "3.pool.ntp.org iburst"
+
+# --- Timezone ----------------------------------------------------------------
+ntp_timezone: "UTC"
+
+# --- chrony tuning -------------------------------------------------------
+ntp_makestep_threshold: 1.0
+ntp_makestep_limit: 3
+ntp_rtcsync: true
+ntp_driftfile: /var/lib/chrony/drift
+ntp_allow_networks: []          # e.g. ["10.0.0.0/8"] if this host also serves NTP to other hosts (chronyd `allow`)
+
+# --- Health check ------------------------------------------------------------
+ntp_verify_sync_after_deploy: true
+ntp_sync_check_retries: 5
+ntp_sync_check_delay: 10
+
+# --- Service management ---------------------------------------------------
+ntp_service_enabled: true
+ntp_service_state: started

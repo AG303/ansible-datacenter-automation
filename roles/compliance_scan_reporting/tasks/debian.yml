@@ -1,0 +1,25 @@
+---
+# roles/compliance_scan_reporting/tasks/debian.yml — Debian-family specific adjustments
+- name: Ensure lynis package is installed
+  ansible.builtin.package:
+    name: "{{ lynis_package_name[ansible_facts['os_family']] }}"
+    state: present
+  when: compliance_scan_tool == 'lynis'
+  tags: [security, compliance]
+
+- name: Warn that openscap_scanner support is best-effort on Debian family
+  ansible.builtin.debug:
+    msg: >-
+      openscap_scanner content packages (scap-security-guide) are primarily
+      published for RHEL-family distributions; on Debian family only the
+      libopenscap8 library/CLI is installed and a compatible SCAP content
+      file must be supplied separately.
+  when: compliance_scan_tool == 'openscap_scanner'
+  tags: [security, compliance]
+
+- name: Ensure libopenscap8 is installed (Debian family, best-effort)
+  ansible.builtin.package:
+    name: "{{ openscap_package_name[ansible_facts['os_family']] }}"
+    state: present
+  when: compliance_scan_tool == 'openscap_scanner'
+  tags: [security, compliance]

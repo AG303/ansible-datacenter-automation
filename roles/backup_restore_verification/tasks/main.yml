@@ -1,0 +1,77 @@
+---
+# roles/backup_restore_verification/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "backup_restore_verification supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, backupverify]
+
+- name: Assert backup_verify_source is valid
+  ansible.builtin.assert:
+    that:
+      - backup_verify_source in ['database', 'restic']
+    fail_msg: "backup_verify_source must be database or restic (found {{ backup_verify_source }})"
+  tags: [dr, backupverify]
+
+- name: Install container runtime for the isolated scratch environment
+  ansible.builtin.package:
+    name: "{{ container_runtime_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, backupverify]
+
+- name: Ensure the container runtime service is running
+  ansible.builtin.service:
+    name: "{{ 'podman.socket' if ansible_facts['os_family'] == 'RedHat' else 'docker' }}"
+    state: started
+    enabled: true
+  tags: [dr, backupverify]
+
+- name: Ensure scratch data directory exists
+  ansible.builtin.file:
+    path: "{{ backup_verify_scratch_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, backupverify]
+
+- name: Resolve verification secret from HashiCorp Vault
+  ansible.builtin.set_fact:
+    backup_verify_secret_value: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                                     engine_mount_point=vault_kv_mount, url=vault_addr).secret.value }}"
+  no_log: true
+  when: backup_verify_credential_source == 'vault'
+  tags: [dr, backupverify]
+
+- name: Resolve verification secret from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    backup_verify_secret_value: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  no_log: true
+  when: backup_verify_credential_source == 'aws_secrets_manager'
+  tags: [dr, backupverify]
+
+- name: Include database restore verification workflow
+  ansible.builtin.include_tasks: verify_database.yml
+  when: backup_verify_source == 'database'
+  tags: [dr, backupverify]
+
+- name: Include restic restore verification workflow
+  ansible.builtin.include_tasks: verify_restic.yml
+  when: backup_verify_source == 'restic'
+  tags: [dr, backupverify]
+
+- name: Tear down the scratch container after verification
+  community.docker.docker_container:
+    name: "{{ backup_verify_container_name }}"
+    state: absent
+    force_kill: true
+  when: backup_verify_cleanup_after_run | bool
+  tags: [dr, backupverify]
+
+- name: Remove scratch data directory after verification
+  ansible.builtin.file:
+    path: "{{ backup_verify_scratch_data_dir }}"
+    state: absent
+  when: backup_verify_cleanup_after_run | bool
+  tags: [dr, backupverify]

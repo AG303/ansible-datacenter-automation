@@ -1,0 +1,158 @@
+---
+# roles/artifact_registry_deployment/tasks/main.yml
+# Pull a versioned artifact (tarball/zip) from Nexus/Artifactory/S3, verify its
+# checksum, unpack it to a versioned release directory, symlink current ->
+# releases/<version>, prune old releases keeping the last N, and restart the
+# service via a notify handler. Filesystem/systemd mechanics are identical
+# across OS families, so no redhat.yml/debian.yml split is required.
+
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "artifact_registry_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, artifact_registry]
+
+- name: Assert artifact_source_type is supported
+  ansible.builtin.assert:
+    that:
+      - artifact_source_type in ['nexus_artifactory', 's3']
+    fail_msg: "artifact_source_type must be 'nexus_artifactory' or 's3' (found {{ artifact_source_type }})"
+  tags: [deploy, artifact_registry]
+
+- name: Assert required variables are set for the chosen source type
+  ansible.builtin.assert:
+    that:
+      - (artifact_source_type == 'nexus_artifactory' and artifact_url | length > 0) or
+        (artifact_source_type == 's3' and artifact_s3_bucket | length > 0 and artifact_s3_key | length > 0)
+    fail_msg: "artifact_url is required for nexus_artifactory; artifact_s3_bucket + artifact_s3_key are required for s3"
+  tags: [deploy, artifact_registry]
+
+- name: Ensure service group exists
+  ansible.builtin.group:
+    name: "{{ app_service_group }}"
+    state: present
+  tags: [deploy, artifact_registry]
+
+- name: Ensure service user exists (no login shell)
+  ansible.builtin.user:
+    name: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+  tags: [deploy, artifact_registry]
+
+- name: Ensure base application and releases directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0750"
+  loop:
+    - "{{ app_base_dir }}"
+    - "{{ artifact_releases_dir }}"
+  tags: [deploy, artifact_registry]
+
+- name: Download the artifact from Nexus/Artifactory (guarded)
+  ansible.builtin.get_url:
+    url: "{{ artifact_url }}"
+    dest: "{{ artifact_local_download_path }}"
+    headers:
+      Authorization: "Bearer {{ artifact_registry_auth_token }}"
+    checksum: "{{ artifact_checksum }}"
+    mode: "0640"
+  when: artifact_source_type == 'nexus_artifactory'
+  no_log: true
+  tags: [deploy, artifact_registry]
+
+- name: Download the artifact from S3 (guarded)
+  amazon.aws.s3_object:
+    bucket: "{{ artifact_s3_bucket }}"
+    object: "{{ artifact_s3_key }}"
+    dest: "{{ artifact_local_download_path }}"
+    mode: get
+    region: "{{ aws_region }}"
+  when: artifact_source_type == 's3'
+  no_log: true
+  tags: [deploy, artifact_registry]
+
+- name: Verify downloaded artifact checksum (S3 path, get_url already verified nexus path)
+  ansible.builtin.stat:
+    path: "{{ artifact_local_download_path }}"
+    checksum_algorithm: sha256
+  register: artifact_stat_result
+  when: artifact_source_type == 's3'
+  tags: [deploy, artifact_registry]
+
+- name: Assert S3 artifact checksum matches expected value
+  ansible.builtin.assert:
+    that:
+      - artifact_checksum | length == 0 or
+        ("sha256:" + artifact_stat_result.stat.checksum) == artifact_checksum
+    fail_msg: "Downloaded S3 artifact checksum does not match artifact_checksum"
+  when:
+    - artifact_source_type == 's3'
+    - artifact_checksum | length > 0
+  tags: [deploy, artifact_registry]
+
+- name: Ensure the versioned release directory exists
+  ansible.builtin.file:
+    path: "{{ artifact_releases_dir }}/{{ app_version }}"
+    state: directory
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0750"
+  tags: [deploy, artifact_registry]
+
+- name: Unpack the artifact into the versioned release directory
+  ansible.builtin.unarchive:
+    src: "{{ artifact_local_download_path }}"
+    dest: "{{ artifact_releases_dir }}/{{ app_version }}"
+    remote_src: true
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+  tags: [deploy, artifact_registry]
+
+- name: Symlink current to the newly-deployed release
+  ansible.builtin.file:
+    src: "{{ artifact_releases_dir }}/{{ app_version }}"
+    dest: "{{ artifact_current_symlink }}"
+    state: link
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    force: true
+  notify: Restart application service
+  tags: [deploy, artifact_registry]
+
+- name: Discover existing release directories for pruning
+  ansible.builtin.find:
+    paths: "{{ artifact_releases_dir }}"
+    file_type: directory
+    depth: 1
+  register: artifact_existing_releases
+  tags: [deploy, artifact_registry]
+
+- name: Determine releases to prune beyond the retention count
+  ansible.builtin.set_fact:
+    artifact_releases_to_prune: >-
+      {{ (artifact_existing_releases.files | sort(attribute='mtime', reverse=true) | map(attribute='path') | list)
+         [artifact_keep_releases:] }}
+  tags: [deploy, artifact_registry]
+
+- name: Prune old releases beyond artifact_keep_releases
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ artifact_releases_to_prune }}"
+  loop_control:
+    label: "{{ item }}"
+  tags: [deploy, artifact_registry]
+
+- name: Remove the local downloaded artifact file
+  ansible.builtin.file:
+    path: "{{ artifact_local_download_path }}"
+    state: absent
+  changed_when: false
+  tags: [deploy, artifact_registry]

@@ -1,0 +1,44 @@
+---
+# roles/compliance_scan_reporting/tasks/parse_lynis.yml
+# Parses the lynis log file for warning/suggestion counts to build a simple
+# pass/warn/fail summary (lynis itself does not emit a hard numeric "fail"
+# count in the log; suggestions and warnings are treated as warn/fail tiers
+# for reporting purposes here).
+- name: Find the most recent lynis log file
+  ansible.builtin.find:
+    paths: "{{ compliance_scan_report_dir }}"
+    patterns: "lynis-*.log"
+    age: "-10m"
+  register: _lynis_log_files
+  tags: [security, compliance]
+
+- name: Set lynis log file fact
+  ansible.builtin.set_fact:
+    _lynis_log_file: "{{ (_lynis_log_files.files | sort(attribute='mtime') | last).path }}"
+  when: _lynis_log_files.files | length > 0
+  tags: [security, compliance]
+
+- name: Count warnings in lynis log
+  ansible.builtin.shell: "grep -c 'Warning:' {{ _lynis_log_file }} || true"
+  register: _lynis_warn_count
+  changed_when: false
+  when: _lynis_log_file is defined
+  tags: [security, compliance]
+
+- name: Count suggestions in lynis log
+  ansible.builtin.shell: "grep -c 'Suggestion:' {{ _lynis_log_file }} || true"
+  register: _lynis_suggestion_count
+  changed_when: false
+  when: _lynis_log_file is defined
+  tags: [security, compliance]
+
+- name: Build scan summary fact
+  ansible.builtin.set_fact:
+    compliance_scan_summary:
+      host: "{{ inventory_hostname }}"
+      tool: lynis
+      scanned_at: "{{ ansible_date_time.iso8601 }}"
+      warn_count: "{{ _lynis_warn_count.stdout | default('0') | trim | int }}"
+      suggestion_count: "{{ _lynis_suggestion_count.stdout | default('0') | trim | int }}"
+      pass: "{{ (_lynis_warn_count.stdout | default('0') | trim | int) == 0 }}"
+  tags: [security, compliance]

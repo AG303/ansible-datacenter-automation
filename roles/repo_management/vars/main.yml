@@ -1,0 +1,11 @@
+---
+# roles/repo_management/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+repo_config_dir:
+  RedHat: /etc/yum.repos.d
+  Debian: /etc/apt/sources.list.d
+
+repo_keyring_dir:
+  Debian: /etc/apt/keyrings

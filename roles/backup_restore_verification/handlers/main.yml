@@ -1,0 +1,8 @@
+---
+# roles/backup_restore_verification/handlers/main.yml
+# No persistent service is managed by this role; retained for convention
+# consistency.
+- name: Noop backup verification handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for backup_restore_verification"
+  listen: "Archive verification report"

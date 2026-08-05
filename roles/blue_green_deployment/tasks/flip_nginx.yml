@@ -1,0 +1,24 @@
+---
+# roles/blue_green_deployment/tasks/flip_nginx.yml
+# Re-renders the nginx_deployment role's vhost proxy_pass upstream so the
+# reverse proxy now points at the idle (newly-verified) color's first host,
+# then reloads nginx on every LB host. For multi-backend upstream pools,
+# extend this with an nginx upstream{} block template instead of a single
+# proxy_pass target.
+
+- name: Re-deploy nginx_deployment with proxy_pass pointed at the new color
+  ansible.builtin.include_role:
+    name: nginx_deployment
+  delegate_to: "{{ item }}"
+  loop: "{{ groups[blue_green_lb_hosts] | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  vars:
+    nginx_vhosts:
+      - name: "{{ blue_green_backend_name }}"
+        server_name: "_"
+        listen_port: 80
+        proxy_pass: >-
+          http://{{ hostvars[groups[blue_green_idle_group][0]]['ansible_default_ipv4']['address'] }}:
+          {{ blue_green_backend_port }}
+  tags: [deploy, blue_green]

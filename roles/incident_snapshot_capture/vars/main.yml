@@ -1,0 +1,14 @@
+---
+# roles/incident_snapshot_capture/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+incident_capture_dependency_packages:
+  RedHat:
+    - sysstat
+    - net-tools
+    - tar
+  Debian:
+    - sysstat
+    - net-tools
+    - tar

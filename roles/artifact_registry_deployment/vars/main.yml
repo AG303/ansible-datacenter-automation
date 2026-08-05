@@ -1,0 +1,8 @@
+---
+# roles/artifact_registry_deployment/vars/main.yml
+# This role's deployment mechanics (releases/current symlink pattern) are
+# identical across OS families since they operate purely on the filesystem
+# and systemd — retained for structural consistency with the rest of the
+# collection.
+artifact_releases_dir: "{{ app_base_dir }}/releases"
+artifact_current_symlink: "{{ app_base_dir }}/current"

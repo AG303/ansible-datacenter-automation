@@ -1,0 +1,76 @@
+---
+# roles/lvm_snapshot_management/tasks/revert.yml — DESTRUCTIVE merge-back of a snapshot
+- name: Require explicit confirmation before reverting a volume from snapshot
+  ansible.builtin.assert:
+    that:
+      - lvm_revert_confirm | bool
+    fail_msg: >-
+      Refusing to revert: set lvm_revert_confirm=true explicitly to confirm this
+      destructive action overwrites the current state of the origin volume(s) on
+      {{ inventory_hostname }}.
+  tags: [dr, lvm]
+
+- name: Pause for operator confirmation before destructive snapshot revert
+  ansible.builtin.pause:
+    prompt: >-
+      DESTRUCTIVE ACTION: about to revert LVM origin volume(s) on {{ inventory_hostname }}
+      to snapshot {{ lvm_revert_snapshot_name if lvm_revert_snapshot_name else '(latest per origin)' }}.
+      This discards all changes made since the snapshot was taken. Press Enter to continue
+      or Ctrl+C then A to abort.
+  tags: [dr, lvm]
+
+- name: List snapshot LVs to identify latest per origin volume (when not explicitly named)
+  ansible.builtin.command:
+    cmd: "lvs --noheadings -o lv_name,lv_time --separator='|' {{ item.vg }}"
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}"
+  register: lvm_revert_listing
+  changed_when: false
+  when: lvm_revert_snapshot_name | length == 0
+  tags: [dr, lvm]
+
+- name: Unmount origin filesystem before merge (required by lvconvert --merge)
+  ansible.posix.mount:
+    path: "/mnt/{{ item.lv }}"
+    state: unmounted
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ item.lv }}"
+  failed_when: false
+  tags: [dr, lvm]
+
+- name: Merge the named snapshot back into its origin volume
+  ansible.builtin.command:
+    cmd: "lvconvert --merge /dev/{{ item.vg }}/{{ lvm_revert_snapshot_name }}"
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ lvm_revert_snapshot_name }}"
+  register: lvm_merge_result
+  changed_when: lvm_merge_result.rc == 0
+  when: lvm_revert_snapshot_name | length > 0
+  tags: [dr, lvm]
+
+- name: Merge the most recent snapshot per origin volume back into its origin
+  ansible.builtin.command:
+    cmd: >-
+      lvconvert --merge /dev/{{ item.vg }}/{{ item.lv }}{{ lvm_snapshot_suffix }}
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ item.lv }}"
+  register: lvm_merge_latest_result
+  changed_when: lvm_merge_latest_result.rc == 0
+  when: lvm_revert_snapshot_name | length == 0
+  tags: [dr, lvm]
+
+- name: Remount origin filesystem after merge completes
+  ansible.posix.mount:
+    path: "/mnt/{{ item.lv }}"
+    src: "/dev/{{ item.vg }}/{{ item.lv }}"
+    fstype: xfs
+    state: mounted
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ item.lv }}"
+  failed_when: false
+  tags: [dr, lvm]

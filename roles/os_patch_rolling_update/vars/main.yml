@@ -1,0 +1,8 @@
+---
+# roles/os_patch_rolling_update/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+os_patch_package_manager:
+  RedHat: dnf
+  Debian: apt

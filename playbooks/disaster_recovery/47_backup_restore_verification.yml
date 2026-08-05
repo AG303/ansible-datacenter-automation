@@ -1,0 +1,8 @@
+---
+- name: Verify the latest backup actually restores cleanly into a scratch environment
+  hosts: "{{ target_hosts | default('backup_verification_runners') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: backup_restore_verification
+  tags: [dr, backupverify]

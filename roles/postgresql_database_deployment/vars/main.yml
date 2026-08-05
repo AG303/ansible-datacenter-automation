@@ -1,0 +1,32 @@
+---
+# roles/postgresql_database_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+postgresql_packages:
+  RedHat:
+    - "postgresql{{ postgresql_version }}-server"
+    - "postgresql{{ postgresql_version }}"
+  Debian:
+    - "postgresql-{{ postgresql_version }}"
+    - "postgresql-client-{{ postgresql_version }}"
+
+postgresql_service_name:
+  RedHat: "postgresql-{{ postgresql_version }}"
+  Debian: "postgresql"
+
+postgresql_data_dir:
+  RedHat: "/var/lib/pgsql/{{ postgresql_version }}/data"
+  Debian: "/var/lib/postgresql/{{ postgresql_version }}/main"
+
+postgresql_conf_path:
+  RedHat: "/var/lib/pgsql/{{ postgresql_version }}/data/postgresql.conf"
+  Debian: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+
+postgresql_hba_conf_path:
+  RedHat: "/var/lib/pgsql/{{ postgresql_version }}/data/pg_hba.conf"
+  Debian: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+
+postgresql_bin_dir:
+  RedHat: "/usr/pgsql-{{ postgresql_version }}/bin"
+  Debian: "/usr/lib/postgresql/{{ postgresql_version }}/bin"

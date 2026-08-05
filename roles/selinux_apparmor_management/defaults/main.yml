@@ -1,0 +1,48 @@
+---
+# roles/selinux_apparmor_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- SELinux (RedHat family) -------------------------------------------------
+selinux_state: enforcing                 # enforcing|permissive|disabled
+selinux_policy: targeted                 # targeted|mls|minimum
+
+# SELinux booleans to enforce. Example:
+# selinux_booleans:
+#   - name: httpd_can_network_connect
+#     state: true
+#   - name: samba_export_all_rw
+#     state: false
+selinux_booleans: []
+
+# Custom file contexts (fcontext) to apply. Example:
+# selinux_file_contexts:
+#   - target: "/srv/myapp(/.*)?"
+#     setype: httpd_sys_content_t
+#   - target: "/opt/app/bin/myapp"
+#     setype: bin_t
+selinux_file_contexts: []
+
+# When true, runs `restorecon -Rv` on the parent path of every entry in
+# selinux_file_contexts after applying the fcontext rule, so the new context
+# takes effect immediately rather than only on next relabel.
+selinux_restorecon_after_fcontext: true
+
+# --- AppArmor (Debian family) -------------------------------------------------
+apparmor_default_mode: enforce           # enforce|complain, applied to profiles listed below unless overridden per-profile
+
+# Each entry: {name: "<profile name or path under /etc/apparmor.d/>", mode: "enforce"|"complain"}
+# Example:
+# apparmor_profiles:
+#   - name: usr.sbin.nginx
+#     mode: enforce
+#   - name: usr.bin.mysqld
+#     mode: complain
+apparmor_profiles: []
+
+# --- Safety --------------------------------------------------------------
+# When true, refuses to set selinux_state: disabled without an explicit
+# acknowledgement var, since disabling SELinux entirely is rarely desired
+# and requires a reboot to fully take effect.
+selinux_disable_requires_ack: true
+selinux_disable_acknowledged: false

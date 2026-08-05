@@ -1,0 +1,28 @@
+---
+# roles/apache_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+# RedHat/EL httpd loads all modules via conf.modules.d/*.conf by default and
+# serves vhosts directly from conf.d/*.conf includes — there is no
+# a2enmod/a2ensite equivalent step required on this family.
+
+- name: Open HTTP/HTTPS ports in firewalld
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - http
+    - https
+  when: ansible_facts.services['firewalld.service'] is defined
+  tags: [deploy, apache]
+
+- name: Ensure SELinux allows httpd to act as reverse proxy (httpd_can_network_connect)
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+  when:
+    - ansible_facts['selinux']['status'] is defined
+    - ansible_facts['selinux']['status'] == 'enabled'
+    - apache_vhosts | selectattr('proxy_pass', 'defined') | list | length > 0
+  tags: [deploy, apache]

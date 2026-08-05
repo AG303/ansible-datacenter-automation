@@ -1,0 +1,64 @@
+---
+# roles/third_party_repo_hardening/tasks/redhat.yml — EPEL + yum-plugin-priorities
+- name: Install the yum/dnf priorities plugin (dnf ships this built in on EL8/9)
+  ansible.builtin.dnf:
+    name: python3-dnf-plugins-core
+    state: present
+  when: yum_priorities_plugin_install | bool
+  tags: [patch, third_party_repo_hardening]
+
+- name: Install epel-release from the official Fedora Project URL
+  ansible.builtin.dnf:
+    name: "{{ epel_release_package_url[ansible_facts['distribution_major_version']] }}"
+    state: present
+    disable_gpg_check: false
+  when:
+    - epel_install | bool
+    - ansible_facts['distribution_major_version'] in epel_release_package_url
+  tags: [patch, third_party_repo_hardening]
+
+- name: Import the EPEL GPG key explicitly
+  ansible.builtin.rpm_key:
+    key: "/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-{{ ansible_facts['distribution_major_version'] }}"
+    state: present
+  when: epel_install | bool
+  tags: [patch, third_party_repo_hardening]
+
+- name: Disable EPEL by default (enabled=0) unless explicitly allow-listed
+  ansible.builtin.ini_file:
+    path: /etc/yum.repos.d/epel.repo
+    section: "{{ item }}"
+    option: enabled
+    value: "{{ '1' if item in epel_allowlisted_repo_ids else '0' }}"
+    no_extra_spaces: true
+    mode: "0644"
+  loop:
+    - epel
+    - epel-debuginfo
+    - epel-source
+  when: epel_install | bool
+  register: epel_repo_files
+  failed_when:
+    - epel_repo_files is failed
+    - "'No section' not in (epel_repo_files.msg | default(''))"
+  tags: [patch, third_party_repo_hardening]
+
+- name: Set EPEL repo priority so it never shadows OS base packages
+  ansible.builtin.ini_file:
+    path: /etc/yum.repos.d/epel.repo
+    section: epel
+    option: priority
+    value: "{{ epel_priority }}"
+    no_extra_spaces: true
+    mode: "0644"
+  when: epel_install | bool
+  tags: [patch, third_party_repo_hardening]
+
+- name: Explicitly re-enable allow-listed EPEL repo IDs
+  ansible.builtin.command: "dnf config-manager --set-enabled {{ item }}"
+  loop: "{{ epel_allowlisted_repo_ids }}"
+  changed_when: true
+  when:
+    - epel_install | bool
+    - epel_allowlisted_repo_ids | length > 0
+  tags: [patch, third_party_repo_hardening]

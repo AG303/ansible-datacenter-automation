@@ -1,0 +1,15 @@
+---
+# roles/repo_management/handlers/main.yml
+- name: Clean dnf metadata cache
+  ansible.builtin.command: dnf clean metadata
+  changed_when: true
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - repo_management_clean_metadata_after_change | bool
+
+- name: Refresh apt cache
+  ansible.builtin.apt:
+    update_cache: true
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - repo_management_clean_metadata_after_change | bool

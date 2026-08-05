@@ -1,0 +1,55 @@
+---
+# roles/mysql_database_deployment/tasks/replication.yml
+# Optional streaming replication setup, guarded by mysql_replication_enabled.
+# This is a basic source/replica GTID-based configuration for illustration —
+# review carefully before use in a real multi-source topology.
+
+- name: Assert supported mysql_replication_role
+  ansible.builtin.assert:
+    that:
+      - mysql_replication_role in ['source', 'replica']
+    fail_msg: "mysql_replication_role must be 'source' or 'replica' (found {{ mysql_replication_role }})"
+  tags: [deploy, mysql]
+
+- name: Create replication user on the source
+  ansible.mysql.mysql_user:
+    name: "{{ mysql_replication_user }}"
+    host: "%"
+    password: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+           engine_mount_point=vault_kv_mount, url=vault_addr).secret[mysql_replication_password_secret_field])
+         if mysql_secrets_backend == 'hashi_vault'
+         else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json)[mysql_replication_password_secret_field] }}
+    priv: "*.*:REPLICATION SLAVE"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: mysql_replication_role == 'source'
+  no_log: true
+  tags: [deploy, mysql]
+
+- name: Configure replica to replicate from the source using GTID auto-positioning
+  community.mysql.mysql_replication:
+    mode: changeprimary
+    primary_host: "{{ mysql_replication_source_host }}"
+    primary_user: "{{ mysql_replication_user }}"
+    primary_password: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+           engine_mount_point=vault_kv_mount, url=vault_addr).secret[mysql_replication_password_secret_field])
+         if mysql_secrets_backend == 'hashi_vault'
+         else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json)[mysql_replication_password_secret_field] }}
+    primary_auto_position: true
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: mysql_replication_role == 'replica'
+  no_log: true
+  tags: [deploy, mysql]
+
+- name: Start replica I/O and SQL threads
+  community.mysql.mysql_replication:
+    mode: startreplica
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: mysql_replication_role == 'replica'
+  no_log: true
+  tags: [deploy, mysql]

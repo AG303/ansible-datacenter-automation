@@ -1,0 +1,15 @@
+{{ ansible_managed | comment }}
+# Managed by the baseline_os_hardening Ansible role — do not edit by hand.
+# General best-practice sysctl hardening — not mapped to any compliance framework.
+
+{% for key, value in baseline_sysctl_settings.items() %}
+{{ key }} = {{ value }}
+{% endfor %}
+{% if not baseline_is_router %}
+
+# IP forwarding disabled — this host is not configured as a router
+# (baseline_is_router: false)
+{% for key, value in baseline_router_sysctl_settings.items() %}
+{{ key }} = {{ value }}
+{% endfor %}
+{% endif %}

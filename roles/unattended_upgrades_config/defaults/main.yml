@@ -1,0 +1,29 @@
+---
+# roles/unattended_upgrades_config/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Cadence -----------------------------------------------------------------
+auto_patch_enabled: true
+auto_patch_apply_security_only: true      # limit automatic runs to security updates
+auto_patch_schedule_calendar: "*-*-* 03:00:00"   # systemd OnCalendar for dnf-automatic.timer / apt-daily(-upgrade).timer override
+
+# --- Auto-reboot window ---------------------------------------------------------
+auto_patch_auto_reboot: false             # whether the automated cadence itself is allowed to reboot
+auto_patch_reboot_window_start: "02:00"   # HH:MM, only used when auto_patch_auto_reboot is true
+auto_patch_reboot_window_end: "04:00"
+
+# --- Notification ------------------------------------------------------------------
+auto_patch_notify_email: ""                       # e.g. "patching-alerts@example.com" — leave blank to disable email notify
+auto_patch_notify_webhook_url: ""                 # e.g. Slack/Teams incoming webhook — leave blank to disable webhook notify
+auto_patch_notify_webhook_secret_enabled: false   # set true if the webhook URL itself must be fetched from a secrets manager (see README)
+
+# --- RedHat (dnf-automatic) --------------------------------------------------------
+dnf_automatic_upgrade_type: "security"   # "default" (all) or "security"
+
+# --- Debian (unattended-upgrades) ---------------------------------------------------
+apt_daily_upgrade_enabled: true
+unattended_upgrades_origins_patterns:
+  - "origin=Debian,codename=${distro_codename},label=Debian-Security"
+  - "origin=${distro_id},codename=${distro_codename},label=${distro_id}-Security"
+  - "origin=${distro_id},codename=${distro_codename}-security"

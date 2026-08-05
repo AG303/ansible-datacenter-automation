@@ -1,0 +1,141 @@
+---
+# roles/dr_runbook_execution/tasks/main.yml
+# Top-level DR orchestration: health check -> snapshot latest state -> failover ->
+# post-failover verification -> notification, behind a single dr_runbook_action switch.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "dr_runbook_execution supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, runbook]
+
+- name: Assert dr_runbook_action is valid
+  ansible.builtin.assert:
+    that:
+      - dr_runbook_action in ['test', 'execute']
+    fail_msg: "dr_runbook_action must be test or execute (found {{ dr_runbook_action }})"
+  tags: [dr, runbook]
+
+- name: Require explicit confirmation before an execute-mode runbook run
+  ansible.builtin.assert:
+    that:
+      - dr_failover_confirm | default(false) | bool
+    fail_msg: >-
+      Refusing to run the DR runbook in execute mode: set dr_failover_confirm=true
+      explicitly to confirm this destructive, real DR failover has been authorized.
+  when: dr_runbook_action == 'execute'
+  run_once: true
+  tags: [dr, runbook]
+
+- name: Pause for operator confirmation before executing the destructive DR runbook
+  ansible.builtin.pause:
+    prompt: >-
+      DESTRUCTIVE ACTION: about to EXECUTE the full DR runbook (health check, snapshot,
+      failover to '{{ dr_site_group }}', post-failover verification, notification).
+      This is a real disaster-recovery failover, not a test. Confirm this has been
+      authorized by the incident commander. Press Enter to continue or Ctrl+C then A to abort.
+  when: dr_runbook_action == 'execute'
+  run_once: true
+  tags: [dr, runbook]
+
+- name: "Step 1 — DR readiness health check (non-destructive)"
+  ansible.builtin.include_role:
+    name: dr_test_automation
+  vars:
+    dr_site_group: "{{ dr_site_group }}"
+    dr_test_fail_on_any_check_failure: "{{ dr_runbook_action == 'execute' }}"
+  when: dr_runbook_run_health_check | bool
+  tags: [dr, runbook]
+
+- name: "Step 2 — snapshot latest state before any destructive action (LVM)"
+  ansible.builtin.include_role:
+    name: lvm_snapshot_management
+  vars:
+    snapshot_action: create
+    lvm_volumes: "{{ dr_runbook_snapshot_lvm_volumes }}"
+  when: dr_runbook_run_snapshot | bool
+  tags: [dr, runbook]
+
+- name: "Step 3 — execute failover to the DR site (destructive, execute mode only)"
+  ansible.builtin.include_role:
+    name: dr_failover_orchestration
+  vars:
+    dr_site_group: "{{ dr_site_group }}"
+    dr_failover_confirm: true
+    dr_promotion_method: "{{ dr_runbook_promotion_method }}"
+  when:
+    - dr_runbook_run_failover | bool
+    - dr_runbook_action == 'execute'
+  tags: [dr, runbook]
+
+- name: "Step 3 (test mode) — report that failover would run but was skipped"
+  ansible.builtin.debug:
+    msg: >-
+      TEST MODE: failover to '{{ dr_site_group }}' would execute here
+      (dr_runbook_action=execute required). No destructive action taken.
+  when:
+    - dr_runbook_run_failover | bool
+    - dr_runbook_action == 'test'
+  tags: [dr, runbook]
+
+- name: "Step 4 — post-failover restore verification"
+  ansible.builtin.include_role:
+    name: backup_restore_verification
+  vars:
+    backup_verify_source: database
+  when:
+    - dr_runbook_run_verification | bool
+    - dr_runbook_action == 'execute'
+  tags: [dr, runbook]
+
+- name: "Step 4 (test mode) — replication health check as a lighter-weight substitute"
+  ansible.builtin.include_role:
+    name: replication_health_check
+  when:
+    - dr_runbook_run_verification | bool
+    - dr_runbook_action == 'test'
+  tags: [dr, runbook]
+
+- name: Ensure runbook report directory exists
+  ansible.builtin.file:
+    path: "{{ dr_runbook_report_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [dr, runbook]
+
+- name: Compile DR runbook execution report
+  ansible.builtin.set_fact:
+    dr_runbook_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      action: "{{ dr_runbook_action }}"
+      steps_run:
+        health_check: "{{ dr_runbook_run_health_check }}"
+        snapshot: "{{ dr_runbook_run_snapshot }}"
+        failover: "{{ dr_runbook_run_failover and dr_runbook_action == 'execute' }}"
+        verification: "{{ dr_runbook_run_verification }}"
+  tags: [dr, runbook]
+
+- name: Write DR runbook execution report to disk
+  ansible.builtin.copy:
+    content: "{{ dr_runbook_report | to_nice_json }}\n"
+    dest: "{{ dr_runbook_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, runbook]
+
+- name: "Step 5 — send DR runbook completion notification"
+  ansible.builtin.uri:
+    url: "{{ dr_runbook_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: >-
+        DR runbook ({{ dr_runbook_action }} mode) completed on {{ inventory_hostname }}
+        at {{ ansible_date_time.iso8601 }}. Steps: {{ dr_runbook_report.steps_run }}.
+    status_code: [200, 201, 204]
+  when: dr_runbook_notify_webhook_url | length > 0
+  tags: [dr, runbook]

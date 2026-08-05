@@ -1,0 +1,21 @@
+---
+# roles/redis_deployment/tasks/debian.yml — Debian-family specific adjustments
+- name: Open Redis port in ufw (only when bind_address is not loopback)
+  community.general.ufw:
+    rule: allow
+    port: "{{ redis_port | string }}"
+    proto: tcp
+  when:
+    - ansible_facts.services['ufw.service'] is defined
+    - redis_bind_address != '127.0.0.1'
+  tags: [deploy, redis]
+
+- name: Open Sentinel port in ufw (guarded, optional HA setup)
+  community.general.ufw:
+    rule: allow
+    port: "{{ redis_sentinel_port | string }}"
+    proto: tcp
+  when:
+    - ansible_facts.services['ufw.service'] is defined
+    - redis_sentinel_enabled | bool
+  tags: [deploy, redis]

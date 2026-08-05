@@ -1,0 +1,35 @@
+---
+# roles/dr_test_automation/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+# This role is strictly non-destructive: it only reads state and reports results.
+
+# --- DR site reachability ---------------------------------------------------------
+dr_site_group: dr_site
+dr_health_check_urls:
+  - "https://dr-app.internal.example.com/healthz"
+dr_health_check_timeout_seconds: 10
+
+# --- Backup freshness ---------------------------------------------------------------
+dr_max_backup_age_hours: 26           # daily backups plus a safety margin
+dr_backup_manifest_urls:
+  - "https://dr-app.internal.example.com/backup-manifest.json"   # expected JSON: {"last_backup_iso8601": "..."}
+dr_backup_check_destination_type: s3   # s3 | nfs
+dr_backup_s3_bucket: "dc-database-backups"
+dr_backup_s3_prefix: "postgresql/{{ inventory_hostname }}"
+dr_backup_nfs_path: "/mnt/dr-backups/db/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+
+# --- Replication lag ------------------------------------------------------------------
+dr_replication_lag_warning_seconds: 60
+dr_replication_status_url: ""          # optional HTTP endpoint exposing replica lag as JSON {"lag_seconds": N}
+
+# --- DNS failover record TTL --------------------------------------------------------------
+dr_dns_record_name: "app.example.com"
+dr_dns_expected_ttl_seconds: 60
+dr_dns_resolver: "8.8.8.8"
+
+# --- Reporting -------------------------------------------------------------------------------
+dr_test_report_path: "/var/log/dr_test_automation/dr-readiness-{{ ansible_date_time.iso8601_basic_short }}.json"
+dr_test_notify_webhook_url: ""
+dr_test_fail_on_any_check_failure: true

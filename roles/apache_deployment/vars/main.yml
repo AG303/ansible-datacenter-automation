@@ -1,0 +1,32 @@
+---
+# roles/apache_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+apache_package_name:
+  RedHat: httpd
+  Debian: apache2
+
+apache_service_name:
+  RedHat: httpd
+  Debian: apache2
+
+apache_conf_path:
+  RedHat: /etc/httpd/conf/httpd.conf
+  Debian: /etc/apache2/apache2.conf
+
+apache_vhost_dir:
+  RedHat: /etc/httpd/conf.d
+  Debian: /etc/apache2/sites-available
+
+apache_vhost_enabled_dir:
+  RedHat: /etc/httpd/conf.d
+  Debian: /etc/apache2/sites-enabled
+
+apache_log_dir:
+  RedHat: /var/log/httpd
+  Debian: /var/log/apache2
+
+apache_default_vhost_file:
+  RedHat: /etc/httpd/conf.d/welcome.conf
+  Debian: /etc/apache2/sites-enabled/000-default.conf

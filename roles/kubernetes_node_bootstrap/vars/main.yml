@@ -1,0 +1,26 @@
+---
+# roles/kubernetes_node_bootstrap/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+kubernetes_packages:
+  RedHat:
+    - kubelet
+    - kubeadm
+    - kubectl
+  Debian:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+kubernetes_containerd_package:
+  RedHat: containerd.io
+  Debian: containerd.io
+
+kubernetes_kubelet_service_name:
+  RedHat: kubelet
+  Debian: kubelet
+
+kubernetes_containerd_service_name:
+  RedHat: containerd
+  Debian: containerd

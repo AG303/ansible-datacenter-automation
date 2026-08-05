@@ -1,0 +1,93 @@
+---
+# roles/patch_maintenance_window/tasks/main.yml
+# Orchestration role meant to be included at the TOP of other patch
+# playbooks. It evaluates the current time (on the control node) against
+# maintenance_window and sets a fact (patch_maintenance_window_open) that
+# subsequent roles/tasks in the same play can gate on via `when:`.
+#
+# Usage in a wrapper playbook:
+#   roles:
+#     - role: patch_maintenance_window
+#     - role: os_patch_rolling_update
+#       when: patch_maintenance_window_open | bool
+#
+# This role performs no OS package changes itself, so no RedHat/Debian
+# branching task files are required — the logic is pure date/time math and
+# is identical across all managed distros. It always delegates its
+# calculation to localhost so a mixed-timezone fleet all agrees on the same
+# window.
+- name: Determine current time on the control node for maintenance window evaluation
+  ansible.builtin.command: date +"%a %H:%M"
+  environment:
+    TZ: "{{ maintenance_window.timezone }}"
+  register: patch_maintenance_now_raw
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, patch_maintenance_window]
+
+- name: Parse current day and time
+  ansible.builtin.set_fact:
+    patch_maintenance_now_day: "{{ patch_maintenance_now_raw.stdout.split(' ')[0] }}"
+    patch_maintenance_now_time: "{{ patch_maintenance_now_raw.stdout.split(' ')[1] }}"
+  tags: [patch, patch_maintenance_window]
+
+- name: Evaluate whether today is an allowed maintenance day
+  ansible.builtin.set_fact:
+    patch_maintenance_day_allowed: >-
+      {{ (maintenance_window.days | length == 0) or (patch_maintenance_now_day in maintenance_window.days) }}
+  tags: [patch, patch_maintenance_window]
+
+- name: Evaluate whether the current time falls inside the window (same-day window)
+  ansible.builtin.set_fact:
+    patch_maintenance_time_in_window: >-
+      {{ (patch_maintenance_now_time >= maintenance_window.start_time)
+         and (patch_maintenance_now_time <= maintenance_window.end_time) }}
+  when: maintenance_window.start_time <= maintenance_window.end_time
+  tags: [patch, patch_maintenance_window]
+
+- name: Evaluate whether the current time falls inside the window (window crosses midnight)
+  ansible.builtin.set_fact:
+    patch_maintenance_time_in_window: >-
+      {{ (patch_maintenance_now_time >= maintenance_window.start_time)
+         or (patch_maintenance_now_time <= maintenance_window.end_time) }}
+  when: maintenance_window.start_time > maintenance_window.end_time
+  tags: [patch, patch_maintenance_window]
+
+- name: Determine final maintenance-window-open decision
+  ansible.builtin.set_fact:
+    patch_maintenance_window_open: >-
+      {{ true if (maintenance_window_force_run | bool) else
+         ((maintenance_window.enabled | bool) and (patch_maintenance_day_allowed | bool) and (patch_maintenance_time_in_window | bool)) }}
+  tags: [patch, patch_maintenance_window]
+
+- name: Display maintenance window decision
+  ansible.builtin.debug:
+    msg: >-
+      Maintenance window check: now={{ patch_maintenance_now_day }} {{ patch_maintenance_now_time }}
+      {{ maintenance_window.timezone }}, window={{ maintenance_window.days }} {{ maintenance_window.start_time }}-{{ maintenance_window.end_time }},
+      forced={{ maintenance_window_force_run }}, decision={{ 'OPEN — proceeding with patch tasks' if patch_maintenance_window_open
+                                                              else 'CLOSED — skipping patch tasks' }}
+  run_once: true
+  tags: [patch, patch_maintenance_window]
+
+- name: Fail the play when outside the maintenance window (strict mode)
+  ansible.builtin.fail:
+    msg: >-
+      Outside configured maintenance window ({{ maintenance_window.days }} {{ maintenance_window.start_time }}-{{ maintenance_window.end_time }}
+      {{ maintenance_window.timezone }}). Re-run with -e maintenance_window_force_run=true to override for an emergency patch.
+  when:
+    - not (patch_maintenance_window_open | bool)
+    - maintenance_window_fail_instead_of_skip | bool
+  tags: [patch, patch_maintenance_window]
+
+- name: Notify that patch tasks will be skipped (non-strict mode)
+  ansible.builtin.debug:
+    msg: >-
+      Skipping downstream patch tasks on {{ inventory_hostname }}: outside the configured maintenance window.
+      Guard downstream roles with `when: patch_maintenance_window_open | bool`.
+  when:
+    - not (patch_maintenance_window_open | bool)
+    - not (maintenance_window_fail_instead_of_skip | bool)
+  tags: [patch, patch_maintenance_window]

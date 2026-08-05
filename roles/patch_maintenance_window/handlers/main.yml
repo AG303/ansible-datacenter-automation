@@ -1,0 +1,5 @@
+---
+# roles/patch_maintenance_window/handlers/main.yml
+# This role only evaluates date/time facts — no service state is changed,
+# so no handlers are required. File kept for structural consistency across
+# the collection.

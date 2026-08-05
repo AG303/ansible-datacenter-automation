@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: database_backup_restore
+  author: DevOps Automation Collection
+  description: Two-mode role for MySQL/PostgreSQL logical dump backup and guarded restore, with dumps shipped to S3 or NFS backup destinations.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - dbbackup
+    - database
+dependencies: []

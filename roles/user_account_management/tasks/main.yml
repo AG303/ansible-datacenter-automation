@@ -1,0 +1,34 @@
+---
+# roles/user_account_management/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "user_account_management supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, useracct]
+
+- name: Ensure decommissioned-home archive directory exists
+  ansible.builtin.file:
+    path: "{{ user_home_archive_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: user_archive_home_on_removal | bool
+  tags: [security, useracct]
+
+- name: Provision or update present-state accounts
+  ansible.builtin.include_tasks: present.yml
+  loop: "{{ user_accounts | selectattr('state', 'in', ['present', 'disabled']) | list }}"
+  loop_control:
+    loop_var: acct
+    label: "{{ acct.name }} ({{ acct.state }})"
+  tags: [security, useracct]
+
+- name: Decommission absent-state accounts
+  ansible.builtin.include_tasks: absent.yml
+  loop: "{{ user_accounts | selectattr('state', 'equalto', 'absent') | list }}"
+  loop_control:
+    loop_var: acct
+    label: "{{ acct.name }} (absent)"
+  tags: [security, useracct]

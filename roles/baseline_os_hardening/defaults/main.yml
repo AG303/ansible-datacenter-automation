@@ -1,0 +1,85 @@
+---
+# roles/baseline_os_hardening/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+#
+# This role applies GENERAL security best practice only. It is deliberately
+# NOT mapped to any named audited compliance framework (no CIS/STIG control
+# IDs anywhere in this role).
+
+# --- Unused filesystem kernel modules ---------------------------------------
+baseline_disable_filesystems:
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - squashfs
+  - udf
+# usb-storage is intentionally NOT disabled by default — many datacenter
+# hosts need USB storage for legitimate maintenance/imaging tasks. Opt in
+# per-environment by adding "usb-storage" to baseline_disable_filesystems.
+
+# --- sysctl hardening ---------------------------------------------------
+# This role assumes hosts are NOT acting as routers; IP forwarding is
+# disabled by default. Set baseline_is_router: true to skip that override.
+baseline_is_router: false
+
+baseline_sysctl_settings:
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.icmp_ignore_bogus_error_responses: 1
+  net.ipv4.tcp_syncookies: 1
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+  kernel.randomize_va_space: 2        # full ASLR
+  fs.suid_dumpable: 0                 # restrict core dumps from setuid programs
+  kernel.core_uses_pid: 1
+  kernel.dmesg_restrict: 1
+  kernel.kptr_restrict: 2
+  kernel.yama.ptrace_scope: 1
+
+# IP forwarding sysctls, applied only when baseline_is_router is false.
+baseline_router_sysctl_settings:
+  net.ipv4.ip_forward: 0
+  net.ipv6.conf.all.forwarding: 0
+
+# --- Core dump restriction (limits.conf + systemd coredump) -----------------
+baseline_disable_core_dumps: true
+
+# --- Insecure legacy services ------------------------------------------------
+baseline_remove_insecure_packages:
+  - telnet
+  - telnet-server
+  - rsh
+  - rsh-server
+  - vsftpd
+  - tftp
+  - tftp-server
+  - ypserv
+
+baseline_disable_insecure_services:
+  - telnet.socket
+  - rsh.socket
+  - rlogin.socket
+  - rexec.socket
+
+# --- Secure /tmp mount options -----------------------------------------
+# When true, adds nodev,nosuid,noexec options to an existing /tmp mount entry
+# in /etc/fstab. Only applies if /tmp is already a separate mount point —
+# this role does NOT create a new /tmp filesystem, only hardens one if present.
+baseline_harden_tmp_mount: true
+baseline_tmp_mount_options: "defaults,nodev,nosuid,noexec"

@@ -1,0 +1,8 @@
+---
+- name: Manage local user/group lifecycle, SSH keys, and sudo membership
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: user_account_management
+  tags: [security, useracct]

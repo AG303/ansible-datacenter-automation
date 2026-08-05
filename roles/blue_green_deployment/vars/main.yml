@@ -1,0 +1,8 @@
+---
+# roles/blue_green_deployment/vars/main.yml
+# Derived color-group facts. Not meant to be overridden by users — computed
+# from the defaults above at task-run time in tasks/main.yml.
+
+blue_green_color_groups:
+  blue: "{{ blue_group }}"
+  green: "{{ green_group }}"

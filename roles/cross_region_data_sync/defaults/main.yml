@@ -1,0 +1,47 @@
+---
+# roles/cross_region_data_sync/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Sync tool selection ------------------------------------------------------------
+cross_region_sync_tool: rsync          # rsync | rclone
+
+# --- Source / destination -------------------------------------------------------------
+cross_region_sync_paths:
+  - src: /data/app/
+    dest: /data/app/
+cross_region_dest_host_group: dr_site  # inventory group of DR-site hosts to sync to
+cross_region_dest_user: "syncsvc"
+
+# --- rsync options ----------------------------------------------------------------------
+cross_region_rsync_bwlimit_kbps: 20000          # 0 = unlimited
+cross_region_rsync_excludes:
+  - "*.tmp"
+  - "*.log"
+  - ".cache/"
+cross_region_rsync_archive: true
+cross_region_rsync_delete: false                 # mirror deletions from source to destination
+
+# --- rclone options (for object-storage-backed cross-region sync) -----------------------
+cross_region_rclone_remote_source: "primary-s3:dc-app-data"
+cross_region_rclone_remote_dest: "dr-region-s3:dc-app-data-dr"
+cross_region_rclone_bwlimit: "20M"
+cross_region_rclone_config_path: "/etc/rclone/rclone.conf"
+
+# --- Credentials (NEVER hardcode) --------------------------------------------------------
+cross_region_credential_source: vault    # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/cross-region-sync/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   cross_region_ssh_private_key: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                      engine_mount_point=vault_kv_mount, url=vault_addr).secret.private_key }}"
+# AWS Secrets Manager example:
+#   cross_region_ssh_private_key: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+cross_region_ssh_key_path: "/root/.ssh/cross_region_sync_ed25519"
+
+# --- Reporting -----------------------------------------------------------------------------
+cross_region_sync_report_path: "/var/log/cross_region_data_sync/report-{{ ansible_date_time.iso8601_basic_short }}.json"
+cross_region_notify_webhook_url: ""
+cross_region_max_sync_lag_seconds: 1800

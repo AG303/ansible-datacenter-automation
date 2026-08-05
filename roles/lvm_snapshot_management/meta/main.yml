@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: lvm_snapshot_management
+  author: DevOps Automation Collection
+  description: Creates, removes, and reverts LVM snapshots of specified volume groups before risky changes, with free-space pre-checks and retention cleanup.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - lvm
+dependencies: []

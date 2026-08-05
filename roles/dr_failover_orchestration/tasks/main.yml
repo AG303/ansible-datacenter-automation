@@ -1,0 +1,31 @@
+---
+# roles/dr_failover_orchestration/tasks/main.yml
+# Standalone/all-in-one entry point — suitable when dr_promotion_method ==
+# 'replica_command' (a single lightweight command promotes the standby).
+#
+# For dr_promotion_method == 'restore', do NOT invoke this role directly:
+# use playbooks/disaster_recovery/42_dr_failover_orchestration.yml, which runs
+# pre_promote.yml, then a dedicated play against the DR DB host running the
+# database_backup_restore role in restore mode, then post_promote.yml — a role
+# cannot re-target a different host than the play that includes it, so the
+# restore step cannot live inside this single-play task list.
+- name: Assert this all-in-one entry point is only used with replica_command promotion
+  ansible.builtin.assert:
+    that:
+      - dr_promotion_method == 'replica_command'
+    fail_msg: >-
+      dr_failover_orchestration's tasks/main.yml only supports
+      dr_promotion_method=replica_command. For dr_promotion_method=restore, run
+      playbooks/disaster_recovery/42_dr_failover_orchestration.yml instead, which
+      sequences pre_promote.yml -> database_backup_restore (restore mode) -> post_promote.yml
+      across the correct target hosts.
+  run_once: true
+  tags: [dr, failover]
+
+- name: Run pre-promotion checks, confirmation gate, and health check
+  ansible.builtin.include_tasks: pre_promote.yml
+  tags: [dr, failover]
+
+- name: Run post-promotion load-balancer/DNS/notification steps
+  ansible.builtin.include_tasks: post_promote.yml
+  tags: [dr, failover]

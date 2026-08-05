@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: repo_management
+  author: DevOps Automation Collection
+  description: Manages yum/dnf .repo files and apt sources.list.d entries (including deb822 format) from a unified repo_definitions list var, including internal mirror URLs and GPG key import.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - repo_management
+    - repository
+dependencies: []

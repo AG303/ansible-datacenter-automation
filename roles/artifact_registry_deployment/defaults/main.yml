@@ -1,0 +1,43 @@
+---
+# roles/artifact_registry_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+# Generic "classic releases" deployment pattern: pull a versioned artifact from
+# Nexus/Artifactory/S3, verify its checksum, unpack into releases/<version>,
+# symlink current -> releases/<version>, prune old releases, restart the service.
+
+app_name: "sample-artifact-app"
+app_version: "1.0.0"                    # the version being deployed this run
+app_base_dir: "/opt/{{ app_name }}"
+app_service_user: "{{ app_name }}"
+app_service_group: "{{ app_name }}"
+app_service_name: "{{ app_name }}"       # systemd unit notified on successful deploy
+
+# --- Artifact source: "nexus_artifactory" (generic HTTP(S) download with a bearer/API
+# token) or "s3" (amazon.aws.s3_object) --------------------------------------------
+artifact_source_type: "nexus_artifactory"
+artifact_url: ""                          # e.g. "https://nexus.example.com/repository/releases/sample-artifact-app/1.0.0/sample-artifact-app-1.0.0.tar.gz"
+artifact_checksum: ""                     # e.g. "sha256:abcdef123..."
+artifact_s3_bucket: ""                    # used when artifact_source_type == "s3"
+artifact_s3_key: ""                       # e.g. "releases/sample-artifact-app/1.0.0/sample-artifact-app-1.0.0.tar.gz"
+artifact_local_download_path: "/tmp/{{ app_name }}-{{ app_version }}.tar.gz"
+
+# --- Retention -----------------------------------------------------------------------
+artifact_keep_releases: 5                 # number of past releases retained on disk for rollback
+
+# --- Secrets manager integration (Nexus/Artifactory auth token, never inline) ---------
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/artifact_registry/{{ app_name }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example:
+#   artifact_registry_auth_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                       engine_mount_point=vault_kv_mount, url=vault_addr).secret.auth_token }}"
+# AWS Secrets Manager example (also covers S3 IAM-style access if not using instance roles):
+#   artifact_registry_auth_token: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+artifact_registry_auth_token: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+       engine_mount_point=vault_kv_mount, url=vault_addr).secret.auth_token }}
+
+# --- Rolling deploy -------------------------------------------------------------------
+rolling_batch_size: "30%"

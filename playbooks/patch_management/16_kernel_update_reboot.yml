@@ -1,0 +1,10 @@
+---
+- name: Update kernel and reboot hosts one batch at a time with an approval gate
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ kernel_reboot_serial | default(1) }}"
+  max_fail_percentage: "{{ max_fail_percentage | default(10) }}"
+  roles:
+    - role: kernel_update_reboot
+  tags: [patch, kernel_update_reboot]

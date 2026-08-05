@@ -1,0 +1,33 @@
+---
+# roles/user_account_management/tasks/absent.yml
+# Included once per user_accounts entry with state == absent.
+- name: "Check if home directory exists for {{ acct.name }}"
+  ansible.builtin.stat:
+    path: "{{ acct.home | default(user_home_base_dir + '/' + acct.name) }}"
+  register: _user_home_stat
+  tags: [security, useracct]
+
+- name: "Archive home directory for {{ acct.name }} before decommission"
+  ansible.builtin.command:
+    cmd: >-
+      tar -czf {{ user_home_archive_dir }}/{{ acct.name }}-{{ ansible_date_time.iso8601_basic_short }}.tar.gz
+      -C {{ user_home_base_dir }} {{ acct.name }}
+    creates: "{{ user_home_archive_dir }}/{{ acct.name }}-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+  when:
+    - user_archive_home_on_removal | bool
+    - _user_home_stat.stat.exists
+  tags: [security, useracct]
+
+- name: "Remove local account {{ acct.name }}"
+  ansible.builtin.user:
+    name: "{{ acct.name }}"
+    state: absent
+    remove: "{{ acct.remove_home | default(true) }}"
+    force: true
+  tags: [security, useracct]
+
+- name: "Remove sudoers.d drop-in for {{ acct.name }} if present"
+  ansible.builtin.file:
+    path: "{{ user_sudoers_d_path[ansible_facts['os_family']] }}/{{ acct.name }}"
+    state: absent
+  tags: [security, useracct]

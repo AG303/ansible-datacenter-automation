@@ -1,0 +1,22 @@
+---
+# roles/fail2ban_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+fail2ban_package_name:
+  RedHat: fail2ban
+  Debian: fail2ban
+
+fail2ban_service_name:
+  RedHat: fail2ban
+  Debian: fail2ban
+
+fail2ban_jail_local_path: /etc/fail2ban/jail.local
+
+fail2ban_sshd_logpath:
+  RedHat: /var/log/secure
+  Debian: /var/log/auth.log
+
+fail2ban_apache_logpath:
+  RedHat: /var/log/httpd/error_log
+  Debian: /var/log/apache2/error.log

@@ -1,0 +1,86 @@
+---
+# roles/java_app_deployment/tasks/tomcat.yml — Apache Tomcat deployment path
+# Used when app_type: tomcat instead of the generic jar/war systemd unit path.
+
+- name: Ensure tomcat service group exists
+  ansible.builtin.group:
+    name: "{{ tomcat_service_group }}"
+    state: present
+  tags: [deploy, java, tomcat]
+
+- name: Ensure tomcat service user exists (no login shell)
+  ansible.builtin.user:
+    name: "{{ tomcat_service_user }}"
+    group: "{{ tomcat_service_group }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+    home: "{{ tomcat_install_dir }}"
+  tags: [deploy, java, tomcat]
+
+- name: Check whether this Tomcat version is already installed
+  ansible.builtin.stat:
+    path: "{{ tomcat_install_dir }}/bin/version.sh"
+  register: java_tomcat_installed
+  tags: [deploy, java, tomcat]
+
+- name: Download and unpack Apache Tomcat distribution
+  ansible.builtin.unarchive:
+    src: >-
+      {{ tomcat_download_base_url }}/tomcat-{{ tomcat_version.split('.')[0] }}/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz
+    dest: /opt
+    remote_src: true
+    extra_opts: ["--strip-components=1", "--transform=s|^apache-tomcat-{{ tomcat_version }}|{{ tomcat_install_dir | basename }}|"]
+    creates: "{{ tomcat_install_dir }}/bin/catalina.sh"
+  when: not java_tomcat_installed.stat.exists
+  tags: [deploy, java, tomcat]
+
+- name: Ensure tomcat directory ownership is correct
+  ansible.builtin.file:
+    path: "{{ tomcat_install_dir }}"
+    state: directory
+    owner: "{{ tomcat_service_user }}"
+    group: "{{ tomcat_service_group }}"
+    recurse: true
+  tags: [deploy, java, tomcat]
+
+- name: Set release identifier for this WAR deployment
+  ansible.builtin.set_fact:
+    app_release_id: "{{ app_artifact_url | basename | regex_replace('\\.war$', '') }}-{{ ansible_date_time.iso8601_basic_short }}"
+  tags: [deploy, java, tomcat]
+
+- name: Deploy WAR artifact into Tomcat webapps directory
+  ansible.builtin.get_url:
+    url: "{{ app_artifact_url }}"
+    dest: "{{ tomcat_webapps_dir }}/{{ app_name }}.war"
+    checksum: "{{ app_artifact_checksum | default(omit) }}"
+    owner: "{{ tomcat_service_user }}"
+    group: "{{ tomcat_service_group }}"
+    mode: "0640"
+  notify: Restart tomcat
+  tags: [deploy, java, tomcat]
+
+- name: Template Tomcat systemd unit
+  ansible.builtin.template:
+    src: tomcat.service.j2
+    dest: /etc/systemd/system/tomcat.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart tomcat
+  tags: [deploy, java, tomcat]
+
+- name: Drain in-flight requests before restarting Tomcat (best-effort pause)
+  ansible.builtin.pause:
+    seconds: "{{ app_drain_wait_seconds }}"
+  tags: [deploy, java, tomcat]
+
+- name: Ensure tomcat service is enabled and running
+  ansible.builtin.systemd_service:
+    name: tomcat
+    state: started
+    enabled: true
+    daemon_reload: true
+  tags: [deploy, java, tomcat]

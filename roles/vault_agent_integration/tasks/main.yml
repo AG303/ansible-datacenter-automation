@@ -1,0 +1,18 @@
+---
+# roles/vault_agent_integration/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "vault_agent_integration supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, vaultagent]
+
+- name: Deploy HashiCorp Vault Agent (AppRole auth, systemd service)
+  ansible.builtin.include_tasks: vault_agent.yml
+  when: vault_agent_integration_mode == 'vault_agent'
+  tags: [security, vaultagent]
+
+- name: Deploy lightweight AWS Secrets Manager refresh timer
+  ansible.builtin.include_tasks: aws_lightweight.yml
+  when: vault_agent_integration_mode == 'aws_lightweight'
+  tags: [security, vaultagent]

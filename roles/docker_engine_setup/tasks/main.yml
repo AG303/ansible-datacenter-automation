@@ -1,0 +1,64 @@
+---
+# roles/docker_engine_setup/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "docker_engine_setup supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, docker]
+
+- name: Include RedHat-specific repo setup
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, docker]
+
+- name: Include Debian-specific repo setup
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, docker]
+
+- name: Install Docker Engine packages
+  ansible.builtin.package:
+    name: "{{ docker_packages[ansible_facts['os_family']] }}"
+    state: "{{ docker_package_state }}"
+  tags: [deploy, docker]
+
+- name: Ensure /etc/docker directory exists
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [deploy, docker]
+
+- name: Template daemon.json with log driver, storage driver, and mirror settings
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: "{{ docker_daemon_json_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker
+  tags: [deploy, docker]
+
+- name: Ensure docker group exists
+  ansible.builtin.group:
+    name: docker
+    state: present
+  tags: [deploy, docker]
+
+- name: Add specified users to the docker group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_group_members }}"
+  tags: [deploy, docker]
+
+- name: Ensure docker service is enabled and running
+  ansible.builtin.service:
+    name: "{{ docker_service_name[ansible_facts['os_family']] }}"
+    state: "{{ docker_service_state }}"
+    enabled: "{{ docker_service_enabled | bool }}"
+  tags: [deploy, docker]

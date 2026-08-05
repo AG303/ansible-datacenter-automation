@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: kernel_update_reboot
+  author: DevOps Automation Collection
+  description: Updates the kernel package, detects whether a reboot is required by comparing the running vs newest-installed kernel, and reboots safely using ansible.builtin.reboot with an operator approval gate between batches.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - kernel_update_reboot
+    - reboot
+dependencies: []

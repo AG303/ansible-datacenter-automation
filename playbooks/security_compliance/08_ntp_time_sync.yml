@@ -1,0 +1,8 @@
+---
+- name: Configure NTP time synchronization and timezone
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: ntp_time_sync
+  tags: [security, ntp]

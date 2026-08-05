@@ -1,0 +1,38 @@
+---
+# roles/repo_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Repo definitions ------------------------------------------------------------
+# One unified list drives both RedHat (.repo) and Debian (sources.list.d) hosts.
+# Fields:
+#   name        - short identifier, also used as the filename stem
+#   description - human-readable label (RedHat "name=" field)
+#   baseurl     - yum/dnf baseurl (RedHat) OR the full deb822/one-line apt URL (Debian)
+#   deb_line    - optional: full one-line "deb [...] url suite components" string (Debian, legacy format)
+#   deb_suite   - Debian: suite/codename (e.g. "{{ ansible_facts['distribution_release'] }}")
+#   deb_components - Debian: list of components (e.g. ["main"])
+#   gpgkey      - URL to the ASCII-armored GPG key
+#   gpgcheck    - RedHat: whether to enforce gpgcheck (default true)
+#   enabled     - whether the repo should be enabled
+#   priority    - optional yum-priorities value (RedHat) / apt pin priority (Debian)
+repo_definitions:
+  - name: internal-baseos
+    description: "Internal Mirror - Base OS packages"
+    baseurl: "https://repo.internal.example.com/rhel/$releasever/baseos/$basearch"
+    gpgkey: "https://repo.internal.example.com/keys/RPM-GPG-KEY-internal"
+    gpgcheck: true
+    enabled: true
+    priority: 1
+  - name: internal-apt
+    description: "Internal Mirror - APT packages"
+    baseurl: "https://repo.internal.example.com/debian"
+    deb_suite: "{{ ansible_facts['distribution_release'] | default('bookworm') }}"
+    deb_components: ["main"]
+    gpgkey: "https://repo.internal.example.com/keys/apt-internal.asc"
+    enabled: true
+    priority: 500
+
+# --- Behaviour ------------------------------------------------------------------
+repo_management_clean_metadata_after_change: true   # run dnf clean/apt update after repo file changes
+repo_management_use_deb822: true                     # prefer ansible.builtin.deb822_repository on Ubuntu 22.04+/Debian 12+ instead of legacy one-line format

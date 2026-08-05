@@ -1,0 +1,170 @@
+---
+# roles/java_app_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "java_app_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, java]
+
+- name: Assert supported app_type
+  ansible.builtin.assert:
+    that:
+      - app_type in ['jar', 'war', 'tomcat']
+    fail_msg: "app_type must be one of jar, war, tomcat (found {{ app_type }})"
+  tags: [deploy, java]
+
+- name: Include RedHat-specific JDK repo adjustments
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, java]
+
+- name: Include Debian-specific JDK repo adjustments
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, java]
+
+- name: Install JDK package
+  ansible.builtin.package:
+    name: "{{ java_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [deploy, java]
+
+- name: Ensure application service group exists
+  ansible.builtin.group:
+    name: "{{ app_service_group }}"
+    state: present
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+- name: Ensure application service user exists (no login shell)
+  ansible.builtin.user:
+    name: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+    home: "{{ app_base_dir }}"
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+# --- jar / war deployment path (custom systemd unit) --------------------------
+- name: Ensure application base and releases directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0755"
+  loop:
+    - "{{ app_base_dir }}"
+    - "{{ app_base_dir }}/releases"
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+- name: Set release identifier for this deployment
+  ansible.builtin.set_fact:
+    app_release_id: "{{ app_artifact_url | basename | regex_replace('\\.(jar|war)$', '') }}-{{ ansible_date_time.iso8601_basic_short }}"
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+- name: Ensure release directory exists
+  ansible.builtin.file:
+    path: "{{ app_base_dir }}/releases/{{ app_release_id }}"
+    state: directory
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0755"
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+- name: Download application artifact (jar/war)
+  ansible.builtin.get_url:
+    url: "{{ app_artifact_url }}"
+    dest: "{{ app_base_dir }}/releases/{{ app_release_id }}/{{ app_name }}.{{ app_type }}"
+    checksum: "{{ app_artifact_checksum }}"
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0750"
+  when:
+    - app_type != 'tomcat'
+    - app_artifact_checksum | length > 0
+  tags: [deploy, java]
+
+- name: Download application artifact (jar/war) without checksum verification
+  ansible.builtin.get_url:
+    url: "{{ app_artifact_url }}"
+    dest: "{{ app_base_dir }}/releases/{{ app_release_id }}/{{ app_name }}.{{ app_type }}"
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0750"
+  when:
+    - app_type != 'tomcat'
+    - app_artifact_checksum | length == 0
+  tags: [deploy, java]
+
+- name: Symlink current release
+  ansible.builtin.file:
+    src: "{{ app_base_dir }}/releases/{{ app_release_id }}"
+    dest: "{{ app_base_dir }}/current"
+    state: link
+    force: true
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+  when: app_type != 'tomcat'
+  notify: Restart java app
+  tags: [deploy, java]
+
+- name: Template systemd unit for the Java application
+  ansible.builtin.template:
+    src: java_app.service.j2
+    dest: "/etc/systemd/system/{{ app_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: app_type != 'tomcat'
+  notify:
+    - Reload systemd daemon
+    - Restart java app
+  tags: [deploy, java]
+
+- name: Drain in-flight requests before restarting (best-effort pause)
+  ansible.builtin.pause:
+    seconds: "{{ app_drain_wait_seconds }}"
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+- name: Ensure application service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ app_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: app_type != 'tomcat'
+  tags: [deploy, java]
+
+# --- Tomcat deployment path -----------------------------------------------------
+- name: Include Tomcat-specific deployment tasks
+  ansible.builtin.include_tasks: tomcat.yml
+  when: app_type == 'tomcat'
+  tags: [deploy, java]
+
+# --- Post-deploy health check (both paths) --------------------------------------
+- name: Wait for application to accept connections after (re)start
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ tomcat_http_port if app_type == 'tomcat' else app_port }}"
+    delay: 5
+    timeout: "{{ app_health_check_timeout }}"
+  tags: [deploy, java]
+
+- name: Perform post-deploy HTTP health check
+  ansible.builtin.uri:
+    url: "{{ app_health_check_url }}"
+    status_code: 200
+    return_content: false
+  register: app_health_check_result
+  retries: "{{ app_health_check_retries }}"
+  delay: "{{ app_health_check_delay }}"
+  until: app_health_check_result.status == 200
+  tags: [deploy, java]

@@ -1,0 +1,7 @@
+---
+# roles/systemd_service_deployment/vars/main.yml
+# This role has no OS-family package/service name maps — it manages a single
+# custom systemd unit whose paths and names are fully specified by the caller
+# via defaults/main.yml. Retained for structural consistency with the rest of
+# the collection.
+systemd_unit_dir: /etc/systemd/system

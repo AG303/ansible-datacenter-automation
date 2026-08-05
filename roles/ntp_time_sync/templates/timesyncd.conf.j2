@@ -1,0 +1,7 @@
+{{ ansible_managed | comment }}
+# Managed by the ntp_time_sync Ansible role — do not edit by hand.
+
+[Time]
+NTP={{ ntp_servers | map('regex_replace', ' iburst$', '') | join(' ') }}
+FallbackNTP=0.pool.ntp.org 1.pool.ntp.org
+RootDistanceMaxSec=5

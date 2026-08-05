@@ -1,0 +1,7 @@
+---
+# roles/backup_restore_verification/vars/main.yml
+# OS-family specific facts for the container runtime dependency.
+
+container_runtime_package_name:
+  RedHat: podman
+  Debian: docker.io

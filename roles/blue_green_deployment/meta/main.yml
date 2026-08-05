@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: blue_green_deployment
+  author: DevOps Automation Collection
+  description: Generic blue/green orchestration -- deploys an app role to the idle color group, health-checks it, then flips the load balancer upstream.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - deploy
+    - blue_green
+    - orchestration
+dependencies: []

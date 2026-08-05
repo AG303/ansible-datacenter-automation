@@ -1,0 +1,51 @@
+---
+# roles/patch_rollback_snapshot/tasks/main.yml
+# Entry point: dispatches to snapshot (pre-patch recording) or rollback
+# (post-patch downgrade) mode based on patch_rollback_mode.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "patch_rollback_snapshot supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Assert valid patch_rollback_mode
+  ansible.builtin.assert:
+    that:
+      - patch_rollback_mode in ['snapshot', 'rollback']
+    fail_msg: "patch_rollback_mode must be 'snapshot' or 'rollback' (found {{ patch_rollback_mode }})"
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Ensure rollback state directory exists on the managed host
+  ansible.builtin.file:
+    path: "{{ patch_rollback_state_dir }}"
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Run pre-patch snapshot tasks
+  ansible.builtin.include_tasks: snapshot.yml
+  when: patch_rollback_mode == 'snapshot'
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Run rollback (downgrade) tasks
+  ansible.builtin.include_tasks: rollback.yml
+  when: patch_rollback_mode == 'rollback'
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Include RedHat-specific LVM/downgrade adjustments
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Include Debian-specific LVM/downgrade adjustments
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, patch_rollback_snapshot]

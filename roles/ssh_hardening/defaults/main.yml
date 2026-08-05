@@ -1,0 +1,74 @@
+---
+# roles/ssh_hardening/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Core access controls -----------------------------------------------
+ssh_permit_root_login: "no"          # never allow direct root SSH login
+ssh_password_authentication: "no"    # keys only; set to "yes" only for a temporary bootstrap window
+ssh_pubkey_authentication: "yes"
+ssh_permit_empty_passwords: "no"
+ssh_challenge_response_authentication: "no"
+ssh_usepam: "yes"
+ssh_x11_forwarding: "no"
+ssh_allow_agent_forwarding: "no"
+ssh_allow_tcp_forwarding: "no"
+ssh_max_auth_tries: 3
+ssh_login_grace_time: 30
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+ssh_max_sessions: 4
+
+# --- Network / listener ---------------------------------------------------
+ssh_port: 22
+ssh_listen_addresses: []            # e.g. ["10.0.0.5"] to bind to a single mgmt interface; empty = all interfaces
+ssh_protocol: 2
+
+# --- Cryptography (modern, broadly-compatible baseline) -------------------
+ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+  - aes256-ctr
+  - aes192-ctr
+  - aes128-ctr
+ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - hmac-sha2-512
+  - hmac-sha2-256
+ssh_kex_algorithms:
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - diffie-hellman-group16-sha512
+  - diffie-hellman-group18-sha512
+
+# --- Access restriction lists (optional) -----------------------------------
+ssh_allow_groups: []                 # e.g. ["sysadmins", "sre"]
+ssh_allow_users: []                  # e.g. ["deploy", "ansible_svc"]
+ssh_deny_groups: []
+ssh_deny_users: []
+
+# --- Banner -----------------------------------------------------------------
+ssh_banner_enabled: true
+ssh_banner_text: >-
+  Unauthorized access to this system is prohibited and will be logged and
+  monitored. All activity may be recorded for security and audit purposes.
+
+# --- Validation / rollback safety -------------------------------------------
+ssh_validate_config_before_reload: true   # runs `sshd -t` against the new file before it replaces the live config
+ssh_backup_existing_config: true
+
+# --- Secrets manager integration (used only if this role manages host keys
+# from a central authority instead of using locally-generated keys) ---------
+# Choose one pattern; both are illustrated for reference and disabled by default.
+ssh_hostkey_from_vault_enabled: false
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/ssh/host_keys/{{ inventory_hostname }}"
+# HashiCorp Vault example (see tasks/main.yml for usage):
+#   ssh_host_key_private: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                              engine_mount_point=vault_kv_mount, url=vault_addr).secret.private_key }}"
+# AWS Secrets Manager example:
+#   ssh_host_key_private: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

@@ -1,0 +1,7 @@
+---
+# roles/incident_snapshot_capture/handlers/main.yml
+# Purely diagnostic/read-only role; no service to restart or reload.
+- name: Noop incident capture handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for incident_snapshot_capture"
+  listen: "Archive incident diagnostics"

@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: backup_restore_verification
+  author: DevOps Automation Collection
+  description: Restores the most recent backup (restic or database) into an isolated scratch environment and runs an integrity check, proving backups are actually restorable.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - backupverify
+dependencies: []

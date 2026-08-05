@@ -1,0 +1,124 @@
+---
+# roles/vault_agent_integration/tasks/vault_agent.yml — HashiCorp Vault Agent mode
+- name: Ensure unzip is present for Vault Agent binary extraction
+  ansible.builtin.package:
+    name: "{{ vault_agent_download_arch_package[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, vaultagent]
+
+- name: Create vault-agent system group
+  ansible.builtin.group:
+    name: "{{ vault_agent_group }}"
+    system: true
+    state: present
+  tags: [security, vaultagent]
+
+- name: Create vault-agent system user
+  ansible.builtin.user:
+    name: "{{ vault_agent_user }}"
+    group: "{{ vault_agent_group }}"
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+    state: present
+  tags: [security, vaultagent]
+
+- name: Ensure Vault Agent config/data directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_agent_user }}"
+    group: "{{ vault_agent_group }}"
+    mode: "0750"
+  loop:
+    - "{{ vault_agent_config_dir }}"
+    - "{{ vault_agent_data_dir }}"
+  tags: [security, vaultagent]
+
+- name: Download and install the Vault Agent binary (HashiCorp official release zip)
+  ansible.builtin.unarchive:
+    src: "https://releases.hashicorp.com/vault/{{ vault_agent_version }}/vault_{{ vault_agent_version }}_linux_amd64.zip"
+    dest: "{{ vault_agent_install_dir }}"
+    remote_src: true
+    mode: "0755"
+    owner: root
+    group: root
+    creates: "{{ vault_agent_install_dir }}/vault"
+  tags: [security, vaultagent]
+
+- name: "Retrieve AppRole secret_id from HashiCorp Vault-adjacent secrets store"
+  ansible.builtin.set_fact:
+    _vault_approle_secret_id: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_approle_secret_id_path,
+                                    engine_mount_point=vault_kv_mount, url=vault_addr).secret.secret_id }}"
+  no_log: true
+  tags: [security, vaultagent]
+  # AWS Secrets Manager alternative, if the AppRole secret_id itself is
+  # bootstrapped from AWS Secrets Manager rather than Vault KV:
+  # _vault_approle_secret_id: "{{ lookup('amazon.aws.aws_secret', vault_approle_secret_id_path, region=aws_region) }}"
+
+- name: Deploy AppRole role_id file
+  ansible.builtin.copy:
+    content: "{{ vault_approle_role_id }}"
+    dest: "{{ vault_agent_config_dir }}/role_id"
+    owner: "{{ vault_agent_user }}"
+    group: "{{ vault_agent_group }}"
+    mode: "0600"
+  tags: [security, vaultagent]
+
+- name: Deploy AppRole secret_id file
+  ansible.builtin.copy:
+    content: "{{ _vault_approle_secret_id }}"
+    dest: "{{ vault_agent_config_dir }}/secret_id"
+    owner: "{{ vault_agent_user }}"
+    group: "{{ vault_agent_group }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart vault-agent
+  tags: [security, vaultagent]
+
+- name: Deploy Vault Agent HCL configuration
+  ansible.builtin.template:
+    src: vault_agent.hcl.j2
+    dest: "{{ vault_agent_config_dir }}/vault-agent.hcl"
+    owner: "{{ vault_agent_user }}"
+    group: "{{ vault_agent_group }}"
+    mode: "0640"
+  notify: Restart vault-agent
+  tags: [security, vaultagent]
+
+- name: Deploy Vault Agent secret template files
+  ansible.builtin.template:
+    src: secret_template.ctmpl.j2
+    dest: "{{ vault_agent_config_dir }}/{{ item.dest | basename }}.ctmpl"
+    owner: "{{ vault_agent_user }}"
+    group: "{{ vault_agent_group }}"
+    mode: "0640"
+  loop: "{{ vault_agent_templates }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  vars:
+    tmpl_item: "{{ item }}"
+  notify: Restart vault-agent
+  tags: [security, vaultagent]
+
+- name: Deploy vault-agent systemd unit
+  ansible.builtin.template:
+    src: vault-agent.service.j2
+    dest: "{{ vault_agent_systemd_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd daemon
+  tags: [security, vaultagent]
+
+- name: Ensure vault-agent service is enabled and running
+  ansible.builtin.service:
+    name: vault-agent
+    state: "{{ vault_agent_service_state }}"
+    enabled: "{{ vault_agent_service_enabled | bool }}"
+  tags: [security, vaultagent]
+
+- name: Clear transient AppRole secret_id fact
+  ansible.builtin.set_fact:
+    _vault_approle_secret_id: null
+  tags: [security, vaultagent]

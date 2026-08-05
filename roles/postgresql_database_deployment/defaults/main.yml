@@ -1,0 +1,72 @@
+---
+# roles/postgresql_database_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+postgresql_version: "16"
+postgresql_package_state: present
+postgresql_service_enabled: true
+postgresql_service_state: started
+
+# --- postgresql.conf tuning -----------------------------------------------------
+postgresql_listen_addresses: "localhost"   # widen to '*' only with pg_hba.conf + firewall controls in place
+postgresql_port: 5432
+postgresql_max_connections: 100
+postgresql_shared_buffers: "256MB"
+postgresql_effective_cache_size: "1GB"
+postgresql_work_mem: "4MB"
+postgresql_maintenance_work_mem: "64MB"
+postgresql_wal_level: "replica"           # "replica" supports streaming replication out of the box
+
+# --- pg_hba.conf access rules ----------------------------------------------------
+# List of {type, database, user, address, method} entries rendered verbatim.
+# A safe localhost default is always included; extend for app connectivity.
+postgresql_hba_entries:
+  - type: local
+    database: all
+    user: postgres
+    address: ""
+    method: peer
+  - type: host
+    database: all
+    user: all
+    address: "127.0.0.1/32"
+    method: scram-sha-256
+  - type: host
+    database: all
+    user: all
+    address: "::1/128"
+    method: scram-sha-256
+
+# --- Secrets manager integration (postgres superuser + app-role passwords) ------
+postgresql_secrets_backend: "hashi_vault"   # "hashi_vault" or "aws_secrets_manager"
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/postgresql/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+
+postgresql_superuser_password: >-
+  {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+       engine_mount_point=vault_kv_mount, url=vault_addr).secret.superuser_password)
+     if postgresql_secrets_backend == 'hashi_vault'
+     else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json).superuser_password }}
+
+# --- Application databases and roles ----------------------------------------------
+# Example:
+# postgresql_databases:
+#   - name: app_orders
+#     owner: orders_svc
+# postgresql_roles:
+#   - name: orders_svc
+#     password_secret_field: orders_svc_password
+#     role_attr_flags: "LOGIN"
+postgresql_databases: []
+postgresql_roles: []
+
+# --- Streaming replication (optional, guarded) --------------------------------------
+postgresql_replication_enabled: false
+postgresql_replication_role: "primary"      # "primary" or "standby"
+postgresql_replication_user: "repl_svc"
+postgresql_replication_password_secret_field: "replication_password"
+postgresql_replication_primary_host: ""
+postgresql_replication_slot_name: "standby_slot"

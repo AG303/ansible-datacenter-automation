@@ -1,0 +1,101 @@
+---
+# roles/etcd_cluster_backup_restore/tasks/snapshot.yml
+- name: Ensure local snapshot directory exists
+  ansible.builtin.file:
+    path: "{{ etcd_snapshot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, etcd]
+
+- name: Take an etcdctl snapshot save
+  ansible.builtin.command:
+    cmd: >-
+      {{ etcd_binary_path }} snapshot save {{ etcd_snapshot_dir }}/{{ etcd_snapshot_filename }}
+  environment:
+    ETCDCTL_API: "{{ etcd_api_version }}"
+    ETCDCTL_ENDPOINTS: "{{ etcd_endpoints }}"
+    ETCDCTL_CACERT: "{{ etcd_ca_file }}"
+    ETCDCTL_CERT: "{{ etcd_cert_file }}"
+    ETCDCTL_KEY: "{{ etcd_key_file }}"
+  register: etcd_snapshot_result
+  changed_when: "'Snapshot saved' in etcd_snapshot_result.stderr or etcd_snapshot_result.rc == 0"
+  tags: [dr, etcd]
+
+- name: Verify snapshot integrity with snapshot status
+  ansible.builtin.command:
+    cmd: >-
+      {{ etcd_binary_path }} snapshot status {{ etcd_snapshot_dir }}/{{ etcd_snapshot_filename }}
+      --write-out=json
+  environment:
+    ETCDCTL_API: "{{ etcd_api_version }}"
+  register: etcd_snapshot_status
+  changed_when: false
+  tags: [dr, etcd]
+
+- name: Fail if snapshot status check reports an error
+  ansible.builtin.assert:
+    that:
+      - etcd_snapshot_status.rc == 0
+    fail_msg: "etcdctl snapshot status reported a failure for {{ etcd_snapshot_filename }}"
+  tags: [dr, etcd]
+
+- name: Upload etcd snapshot to S3 backup destination
+  amazon.aws.s3_object:
+    bucket: "{{ etcd_backup_s3_bucket }}"
+    object: "{{ etcd_backup_s3_prefix }}/{{ etcd_snapshot_filename }}"
+    src: "{{ etcd_snapshot_dir }}/{{ etcd_snapshot_filename }}"
+    mode: put
+    region: "{{ aws_region }}"
+  when: etcd_backup_destination_type == 's3'
+  tags: [dr, etcd]
+
+- name: Ensure NFS backup destination directory exists
+  ansible.builtin.file:
+    path: "{{ etcd_backup_nfs_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: etcd_backup_destination_type == 'nfs'
+  tags: [dr, etcd]
+
+- name: Copy etcd snapshot to NFS backup destination
+  ansible.builtin.copy:
+    src: "{{ etcd_snapshot_dir }}/{{ etcd_snapshot_filename }}"
+    dest: "{{ etcd_backup_nfs_path }}/{{ etcd_snapshot_filename }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  when: etcd_backup_destination_type == 'nfs'
+  tags: [dr, etcd]
+
+- name: Purge local snapshots older than retention window
+  ansible.builtin.find:
+    paths: "{{ etcd_snapshot_dir }}"
+    age: "{{ etcd_snapshot_retention_days }}d"
+    patterns: "etcd-snapshot-{{ inventory_hostname }}-*.db"
+  register: etcd_old_snapshots
+  tags: [dr, etcd]
+
+- name: Remove expired local snapshot files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ etcd_old_snapshots.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  tags: [dr, etcd]
+
+- name: Notify snapshot completion
+  ansible.builtin.uri:
+    url: "{{ etcd_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "etcd snapshot completed on {{ inventory_hostname }}: {{ etcd_snapshot_filename }}"
+    status_code: [200, 201, 204]
+  when: etcd_notify_webhook_url | length > 0
+  tags: [dr, etcd]

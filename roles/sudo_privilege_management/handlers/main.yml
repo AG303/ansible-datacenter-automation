@@ -1,0 +1,8 @@
+---
+# roles/sudo_privilege_management/handlers/main.yml
+# sudoers.d files are read fresh on every sudo invocation; no service
+# restart/reload is required or applicable for this role. Kept as a
+# placeholder for consistency with other roles in the collection.
+- name: No-op reload placeholder
+  ansible.builtin.debug:
+    msg: "sudo_privilege_management has no managed service to reload; sudoers.d changes take effect immediately."

@@ -1,0 +1,9 @@
+---
+- name: Run etcd cluster snapshot or guarded DR restore
+  hosts: "{{ target_hosts | default('k8s_control_plane') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default(1) }}"
+  roles:
+    - role: etcd_cluster_backup_restore
+  tags: [dr, etcd]

@@ -1,0 +1,9 @@
+---
+- name: Sync application data from the primary site to the DR site
+  hosts: "{{ target_hosts | default('primary_site') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: cross_region_data_sync
+  tags: [dr, crossregionsync]

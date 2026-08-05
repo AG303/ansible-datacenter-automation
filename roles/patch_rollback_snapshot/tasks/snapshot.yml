@@ -1,0 +1,51 @@
+---
+# roles/patch_rollback_snapshot/tasks/snapshot.yml
+# Records currently-installed package versions to a fact file BEFORE patching
+# so a later rollback run can restore them precisely.
+- name: Build package version snapshot document
+  ansible.builtin.set_fact:
+    patch_rollback_snapshot_doc:
+      hostname: "{{ inventory_hostname }}"
+      os_family: "{{ ansible_facts['os_family'] }}"
+      taken_at: "{{ ansible_date_time.iso8601 }}"
+      packages: >-
+        {{ ansible_facts.packages
+           | dict2items
+           | map(attribute='value')
+           | map('first')
+           | list
+           | items2dict(key_name='name', value_name='version') }}
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Write package version snapshot fact file on the managed host
+  ansible.builtin.copy:
+    content: "{{ patch_rollback_snapshot_doc | to_nice_json }}"
+    dest: "{{ patch_rollback_state_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Ensure local rollback-state backup directory exists on the control node
+  ansible.builtin.file:
+    path: "{{ patch_rollback_local_copy_dir }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  become: false
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Fetch a durable copy of the snapshot fact file to the control node
+  ansible.builtin.fetch:
+    src: "{{ patch_rollback_state_file }}"
+    dest: "{{ patch_rollback_local_copy_dir }}/{{ inventory_hostname }}_package_versions.json"
+    flat: true
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Confirm snapshot recorded
+  ansible.builtin.debug:
+    msg: >-
+      Recorded {{ patch_rollback_snapshot_doc.packages | length }} package versions for
+      {{ inventory_hostname }} to {{ patch_rollback_state_file }}
+      (control-node copy: {{ patch_rollback_local_copy_dir }}/{{ inventory_hostname }}_package_versions.json)
+  tags: [patch, patch_rollback_snapshot]

@@ -1,0 +1,9 @@
+---
+# roles/java_app_deployment/tasks/debian.yml — Debian-family specific adjustments
+- name: Open application port in ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ (tomcat_http_port if app_type == 'tomcat' else app_port) | string }}"
+    proto: tcp
+  when: ansible_facts.services['ufw.service'] is defined
+  tags: [deploy, java]

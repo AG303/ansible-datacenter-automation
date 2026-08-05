@@ -1,0 +1,22 @@
+---
+# inventory/group_vars/all.yml
+# Global variables for the entire fleet. Secrets are NEVER stored here —
+# only the coordinates used to look them up from an external secrets manager.
+
+# --- External secrets manager coordinates (choose ONE backend per environment) ---
+secrets_backend: "hashicorp_vault"   # "hashicorp_vault" or "aws_secrets_manager"
+
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_auth_method: "approle"          # roles read AppRole creds from env/CI secrets, never inline
+
+aws_region: "us-east-1"
+
+# --- Rollout safety defaults (overridable per-play with -e) -----------------
+rolling_batch_size: "20%"
+max_fail_percentage: 10
+
+# --- Backup / DR defaults ----------------------------------------------------
+backup_retention_days: 30
+dr_site_group: "dr_site"
+primary_site_group: "web_tier"

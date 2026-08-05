@@ -1,0 +1,9 @@
+---
+- name: Bootstrap Kubernetes node prerequisites and kubeadm components across the fleet
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: kubernetes_node_bootstrap
+  tags: [deploy, kubernetes]

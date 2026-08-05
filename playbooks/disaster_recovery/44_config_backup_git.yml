@@ -1,0 +1,8 @@
+---
+- name: Commit tracked /etc configuration files to git for change-tracking DR
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: config_backup_git
+  tags: [dr, configgit]

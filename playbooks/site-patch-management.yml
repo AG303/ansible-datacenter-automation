@@ -1,0 +1,17 @@
+---
+# Runs the full Patch Management suite (items 14-25) in a safe order:
+# inventory/reporting first, then the maintenance-window guard, then the
+# actual patch/reboot actions, then pinning/hardening, then notification.
+- ansible.builtin.import_playbook: patch_management/14_patch_inventory_facts.yml
+- ansible.builtin.import_playbook: patch_management/22_patch_maintenance_window.yml
+- ansible.builtin.import_playbook: patch_management/20_repo_management.yml
+- ansible.builtin.import_playbook: patch_management/24_third_party_repo_hardening.yml
+- ansible.builtin.import_playbook: patch_management/18_security_only_patching.yml
+- ansible.builtin.import_playbook: patch_management/15_os_patch_rolling_update.yml
+- ansible.builtin.import_playbook: patch_management/16_kernel_update_reboot.yml
+- ansible.builtin.import_playbook: patch_management/23_package_version_pinning.yml
+- ansible.builtin.import_playbook: patch_management/21_unattended_upgrades_config.yml
+- ansible.builtin.import_playbook: patch_management/17_patch_compliance_report.yml
+- ansible.builtin.import_playbook: patch_management/25_patch_notification_alerting.yml
+# 19_patch_rollback_snapshot.yml is intentionally NOT chained here — it is a
+# pre-patch safety step and a standalone rollback tool, run explicitly on demand.

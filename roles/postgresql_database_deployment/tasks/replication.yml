@@ -1,0 +1,71 @@
+---
+# roles/postgresql_database_deployment/tasks/replication.yml
+# Optional streaming replication setup, guarded by postgresql_replication_enabled.
+# Uses a physical replication slot for the standby's WAL streaming connection.
+
+- name: Assert supported postgresql_replication_role
+  ansible.builtin.assert:
+    that:
+      - postgresql_replication_role in ['primary', 'standby']
+    fail_msg: "postgresql_replication_role must be 'primary' or 'standby' (found {{ postgresql_replication_role }})"
+  tags: [deploy, postgresql]
+
+- name: Create replication role on the primary
+  community.postgresql.postgresql_user:
+    name: "{{ postgresql_replication_user }}"
+    password: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+           engine_mount_point=vault_kv_mount, url=vault_addr).secret[postgresql_replication_password_secret_field])
+         if postgresql_secrets_backend == 'hashi_vault'
+         else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json)[postgresql_replication_password_secret_field] }}
+    role_attr_flags: "LOGIN,REPLICATION"
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  when: postgresql_replication_role == 'primary'
+  no_log: true
+  tags: [deploy, postgresql]
+
+- name: Create physical replication slot on the primary
+  community.postgresql.postgresql_slot:
+    name: "{{ postgresql_replication_slot_name }}"
+    slot_type: physical
+    state: present
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  when: postgresql_replication_role == 'primary'
+  tags: [deploy, postgresql]
+
+- name: Stop PostgreSQL on the standby before taking a base backup
+  ansible.builtin.service:
+    name: "{{ postgresql_service_name[ansible_facts['os_family']] }}"
+    state: stopped
+  when: postgresql_replication_role == 'standby'
+  tags: [deploy, postgresql]
+
+- name: Take a base backup from the primary onto the standby (pg_basebackup)
+  ansible.builtin.command: >-
+    {{ postgresql_bin_dir[ansible_facts['os_family']] }}/pg_basebackup
+    -h {{ postgresql_replication_primary_host }}
+    -D {{ postgresql_data_dir[ansible_facts['os_family']] }}
+    -U {{ postgresql_replication_user }}
+    -X stream -P -R -S {{ postgresql_replication_slot_name }}
+  environment:
+    PGPASSWORD: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+           engine_mount_point=vault_kv_mount, url=vault_addr).secret[postgresql_replication_password_secret_field])
+         if postgresql_secrets_backend == 'hashi_vault'
+         else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json)[postgresql_replication_password_secret_field] }}
+  args:
+    creates: "{{ postgresql_data_dir[ansible_facts['os_family']] }}/standby.signal"
+  when: postgresql_replication_role == 'standby'
+  no_log: true
+  tags: [deploy, postgresql]
+
+- name: Start PostgreSQL on the standby (now streaming from the primary)
+  ansible.builtin.service:
+    name: "{{ postgresql_service_name[ansible_facts['os_family']] }}"
+    state: started
+  when: postgresql_replication_role == 'standby'
+  tags: [deploy, postgresql]

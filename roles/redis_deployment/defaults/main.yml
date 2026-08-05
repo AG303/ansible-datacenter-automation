@@ -1,0 +1,46 @@
+---
+# roles/redis_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+redis_package_state: present
+redis_service_enabled: true
+redis_service_state: started
+
+# --- redis.conf tuning -----------------------------------------------------------
+redis_bind_address: "127.0.0.1"       # widen only with firewall/security-group controls in place
+redis_port: 6379
+redis_maxmemory: "512mb"
+redis_maxmemory_policy: "allkeys-lru"
+redis_persistence_mode: "rdb"          # "rdb", "aof", or "both"
+redis_rdb_save_points:
+  - "900 1"
+  - "300 10"
+  - "60 10000"
+redis_appendfsync: "everysec"          # only relevant when redis_persistence_mode includes aof
+redis_tcp_keepalive: 300
+redis_timeout: 0
+redis_databases: 16
+
+# --- Auth: requirepass sourced from an external secrets manager, never inline ------
+redis_secrets_backend: "hashi_vault"    # "hashi_vault" or "aws_secrets_manager"
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/redis/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+
+redis_requirepass: >-
+  {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+       engine_mount_point=vault_kv_mount, url=vault_addr).secret.requirepass)
+     if redis_secrets_backend == 'hashi_vault'
+     else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json).requirepass }}
+
+# --- Sentinel (optional, guarded — for HA setups) ----------------------------------
+redis_sentinel_enabled: false
+redis_sentinel_port: 26379
+redis_sentinel_monitor_name: "mymaster"
+redis_sentinel_quorum: 2
+redis_sentinel_down_after_milliseconds: 5000
+redis_sentinel_failover_timeout: 60000
+redis_sentinel_parallel_syncs: 1
+redis_master_host: "127.0.0.1"          # the primary node's address, used by replicas and sentinels

@@ -1,0 +1,59 @@
+---
+# roles/user_account_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Managed user lifecycle --------------------------------------------------
+# Each entry drives create/disable/remove/decommission for one local account.
+# `state: present`  -> ensure the account exists with the given attributes
+# `state: disabled` -> lock the account (no login) but retain home dir/data
+# `state: absent`   -> full decommission: remove account, optionally the home dir
+#
+# Example:
+# user_accounts:
+#   - name: deploy
+#     state: present
+#     comment: "CI/CD deploy service account"
+#     groups: ["wheel"]
+#     shell: /bin/bash
+#     create_home: true
+#     ssh_authorized_keys:
+#       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...deploy-key"
+#   - name: contractor_jsmith
+#     state: disabled
+#     comment: "Contractor access - offboarded 2026-06-30"
+#   - name: old_service_acct
+#     state: absent
+#     remove_home: true
+user_accounts: []
+
+# --- Sudo/group membership ---------------------------------------------------
+user_sudo_group:
+  RedHat: wheel
+  Debian: sudo
+
+# --- Home directory defaults --------------------------------------------------
+user_home_base_dir: /home
+user_home_dir_mode: "0750"
+user_default_shell: /bin/bash
+
+# --- SSH key deployment --------------------------------------------------
+user_ssh_authorized_keys_exclusive: true   # when true, authorized_keys is fully replaced by the var-driven list (no drift)
+
+# --- Decommission safety ------------------------------------------------
+user_archive_home_on_removal: true         # tar up the home dir under user_home_archive_dir before deleting it
+user_home_archive_dir: /var/backups/decommissioned_users
+
+# --- Secrets manager integration ---------------------------------------
+# Initial passwords for newly created accounts (only used if `password_from_vault: true`
+# is set on an individual user_accounts entry) are pulled from the external secrets
+# manager, never hardcoded. Both lookup patterns are illustrated for reference.
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/local_accounts/{{ item.name }}"
+# HashiCorp Vault example (see tasks/main.yml for usage):
+#   user_initial_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+# AWS Secrets Manager example:
+#   user_initial_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

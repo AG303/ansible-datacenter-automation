@@ -1,0 +1,18 @@
+{{ ansible_managed | comment }}
+# Managed by the ntp_time_sync Ansible role — do not edit by hand.
+
+{% for server in ntp_servers %}
+server {{ server }}
+{% endfor %}
+
+driftfile {{ ntp_driftfile }}
+makestep {{ ntp_makestep_threshold }} {{ ntp_makestep_limit }}
+{% if ntp_rtcsync %}
+rtcsync
+{% endif %}
+
+{% for net in ntp_allow_networks %}
+allow {{ net }}
+{% endfor %}
+
+logdir /var/log/chrony

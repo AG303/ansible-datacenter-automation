@@ -1,0 +1,53 @@
+---
+# roles/vault_agent_integration/tasks/aws_lightweight.yml — AWS Secrets Manager lightweight mode
+# Instead of running a persistent Vault Agent daemon, this mode installs a
+# small refresh script driven by a systemd timer. The script itself invokes
+# the AWS CLI (which must already be configured with an instance role or
+# credentials outside of Ansible's control) — Ansible's own use of the
+# amazon.aws.aws_secret lookup pattern is documented here for reference and
+# used directly below to pre-seed the destination file on first run.
+- name: Deploy AWS secret refresh shell script
+  ansible.builtin.template:
+    src: aws_secret_refresh.sh.j2
+    dest: "{{ aws_lightweight_refresh_script_path }}"
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [security, vaultagent]
+
+- name: Deploy aws-secret-refresh systemd service unit
+  ansible.builtin.template:
+    src: aws-secret-refresh.service.j2
+    dest: "{{ aws_lightweight_service_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd daemon
+  tags: [security, vaultagent]
+
+- name: Deploy aws-secret-refresh systemd timer unit
+  ansible.builtin.template:
+    src: aws-secret-refresh.timer.j2
+    dest: "{{ aws_lightweight_timer_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd daemon
+  tags: [security, vaultagent]
+
+- name: "Pre-seed destination secret file for {{ aws_lightweight_dest_file }} via amazon.aws.aws_secret lookup"
+  ansible.builtin.copy:
+    content: "{{ lookup('amazon.aws.aws_secret', aws_lightweight_secret_path, region=aws_region) }}"
+    dest: "{{ aws_lightweight_dest_file }}"
+    owner: root
+    group: root
+    mode: "{{ aws_lightweight_dest_mode }}"
+  no_log: true
+  tags: [security, vaultagent]
+
+- name: Ensure aws-secret-refresh timer is enabled and started
+  ansible.builtin.service:
+    name: aws-secret-refresh.timer
+    state: "{{ vault_agent_service_state }}"
+    enabled: "{{ vault_agent_service_enabled | bool }}"
+  tags: [security, vaultagent]

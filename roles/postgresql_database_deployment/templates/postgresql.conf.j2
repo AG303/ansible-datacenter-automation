@@ -1,0 +1,24 @@
+{{ ansible_managed | comment(decoration='# ') }}
+# Managed by the postgresql_database_deployment Ansible role — do not edit by hand.
+
+listen_addresses = '{{ postgresql_listen_addresses }}'
+port = {{ postgresql_port }}
+max_connections = {{ postgresql_max_connections }}
+
+shared_buffers = '{{ postgresql_shared_buffers }}'
+effective_cache_size = '{{ postgresql_effective_cache_size }}'
+work_mem = '{{ postgresql_work_mem }}'
+maintenance_work_mem = '{{ postgresql_maintenance_work_mem }}'
+
+wal_level = {{ postgresql_wal_level }}
+{% if postgresql_replication_enabled %}
+max_wal_senders = 10
+max_replication_slots = 10
+hot_standby = on
+{% endif %}
+
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%a.log'
+log_rotation_age = 1d
+log_min_duration_statement = 1000

@@ -1,0 +1,6 @@
+---
+# roles/dr_failover_orchestration/handlers/main.yml
+- name: Reload load balancer
+  ansible.builtin.service:
+    name: "{{ dr_lb_service_name }}"
+    state: reloaded

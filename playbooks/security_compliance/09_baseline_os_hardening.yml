@@ -1,0 +1,8 @@
+---
+- name: Apply general best-practice baseline OS hardening
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: baseline_os_hardening
+  tags: [security, baseline]

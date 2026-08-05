@@ -1,0 +1,117 @@
+---
+# roles/kubernetes_node_bootstrap/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "kubernetes_node_bootstrap supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, kubernetes]
+
+- name: Disable swap for the current boot
+  ansible.builtin.command: swapoff -a
+  when: kubernetes_disable_swap | bool
+  changed_when: true
+  tags: [deploy, kubernetes]
+
+- name: Remove swap entries from /etc/fstab (persist across reboot)
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+  when: kubernetes_disable_swap | bool
+  tags: [deploy, kubernetes]
+
+- name: Load required kernel modules for container networking
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+    persistent: present
+  loop: "{{ kubernetes_kernel_modules }}"
+  tags: [deploy, kubernetes]
+
+- name: Apply sysctl settings for bridged network traffic
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ kubernetes_sysctl_settings | dict2items }}"
+  tags: [deploy, kubernetes]
+
+- name: Include RedHat-specific repo setup
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, kubernetes]
+
+- name: Include Debian-specific repo setup
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, kubernetes]
+
+- name: Install containerd
+  ansible.builtin.package:
+    name: "{{ kubernetes_containerd_package[ansible_facts['os_family']] }}"
+    state: "{{ containerd_package_state }}"
+  tags: [deploy, kubernetes]
+
+- name: Generate default containerd configuration
+  ansible.builtin.command: containerd config default
+  register: kubernetes_containerd_default_config
+  changed_when: false
+  tags: [deploy, kubernetes]
+
+- name: Template containerd config.toml with SystemdCgroup driver enabled
+  ansible.builtin.template:
+    src: containerd_config.toml.j2
+    dest: "{{ kubernetes_containerd_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart containerd
+  tags: [deploy, kubernetes]
+
+- name: Ensure containerd service is enabled and running
+  ansible.builtin.service:
+    name: "{{ kubernetes_containerd_service_name[ansible_facts['os_family']] }}"
+    state: started
+    enabled: true
+  tags: [deploy, kubernetes]
+
+- name: Install kubelet, kubeadm, kubectl at pinned version
+  ansible.builtin.package:
+    name: "{{ kubernetes_packages[ansible_facts['os_family']] }}"
+    state: present
+  tags: [deploy, kubernetes]
+
+- name: Pin kubelet/kubeadm/kubectl packages against unattended upgrades (Debian apt-mark hold)
+  ansible.builtin.command: "apt-mark hold {{ kubernetes_packages[ansible_facts['os_family']] | join(' ') }}"
+  when: ansible_facts['os_family'] == 'Debian'
+  changed_when: true
+  tags: [deploy, kubernetes]
+
+- name: Ensure kubelet service is enabled (kubeadm manages start once joined)
+  ansible.builtin.service:
+    name: "{{ kubernetes_kubelet_service_name[ansible_facts['os_family']] }}"
+    enabled: true
+  tags: [deploy, kubernetes]
+
+# --- Optional: join an existing cluster. Out of scope by default — the node is
+# left ready for a control-plane operator (or a separate orchestration play) to
+# run `kubeadm join` explicitly. Guarded by kubernetes_join_cluster_enabled.
+- name: Check whether this node has already joined a cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubernetes_kubelet_conf
+  when: kubernetes_join_cluster_enabled | bool
+  tags: [deploy, kubernetes]
+
+- name: Join the Kubernetes cluster via kubeadm join
+  ansible.builtin.command: "{{ kubernetes_join_command }}"
+  when:
+    - kubernetes_join_cluster_enabled | bool
+    - kubernetes_join_command | length > 0
+    - not kubernetes_kubelet_conf.stat.exists
+  changed_when: true
+  no_log: true
+  tags: [deploy, kubernetes]

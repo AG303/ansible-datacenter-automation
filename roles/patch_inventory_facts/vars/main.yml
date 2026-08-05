@@ -1,0 +1,8 @@
+---
+# roles/patch_inventory_facts/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+patch_check_command:
+  RedHat: "dnf check-update"
+  Debian: "apt list --upgradable 2>/dev/null"

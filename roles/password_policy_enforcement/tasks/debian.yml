@@ -1,0 +1,49 @@
+---
+# roles/password_policy_enforcement/tasks/debian.yml — PAM lockout/history via common-auth/common-password
+- name: Configure pam_pwhistory remember count in common-password
+  ansible.builtin.lineinfile:
+    path: "{{ pam_password_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^password\s+requisite\s+pam_pwhistory\.so'
+    line: "password    requisite     pam_pwhistory.so remember={{ password_history_remember }} use_authtok"
+    insertbefore: '^password\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    backup: true
+  tags: [security, pwpolicy]
+
+- name: Configure pam_faillock preauth in common-auth
+  ansible.builtin.lineinfile:
+    path: "{{ pam_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^auth\s+required\s+pam_faillock\.so\s+preauth'
+    line: >-
+      auth        required      pam_faillock.so preauth silent
+      deny={{ password_lockout_attempts }} unlock_time={{ password_lockout_unlock_time }}
+      {{ 'even_deny_root' if password_lockout_even_deny_root else '' }}
+    insertbefore: '^auth\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    backup: true
+  when: password_lockout_mechanism == 'pam_faillock'
+  tags: [security, pwpolicy]
+
+- name: Configure pam_faillock authfail in common-auth
+  ansible.builtin.lineinfile:
+    path: "{{ pam_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^auth\s+\[default=die\]\s+pam_faillock\.so\s+authfail'
+    line: >-
+      auth        [default=die] pam_faillock.so authfail
+      deny={{ password_lockout_attempts }} unlock_time={{ password_lockout_unlock_time }}
+      {{ 'even_deny_root' if password_lockout_even_deny_root else '' }}
+    insertafter: '^auth\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    backup: true
+  when: password_lockout_mechanism == 'pam_faillock'
+  tags: [security, pwpolicy]
+
+- name: Configure pam_tally2 fallback for older Debian releases (auth section)
+  ansible.builtin.lineinfile:
+    path: "{{ pam_auth_file[ansible_facts['os_family']] }}"
+    regexp: '^auth\s+required\s+pam_tally2\.so'
+    line: >-
+      auth        required      pam_tally2.so deny={{ password_lockout_attempts }}
+      unlock_time={{ password_lockout_unlock_time }}
+      {{ 'even_deny_root' if password_lockout_even_deny_root else '' }}
+    insertbefore: '^auth\s+\[success=1 default=ignore\]\s+pam_unix\.so'
+    backup: true
+  when: password_lockout_mechanism == 'pam_tally2'
+  tags: [security, pwpolicy]

@@ -1,0 +1,9 @@
+---
+- name: Run database backup or guarded restore (MySQL/PostgreSQL)
+  hosts: "{{ target_hosts | default('db_servers') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: database_backup_restore
+  tags: [dr, dbbackup]

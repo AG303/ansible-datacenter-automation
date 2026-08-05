@@ -1,0 +1,59 @@
+---
+# roles/security_only_patching/tasks/debian.yml — apply security pocket updates only
+- name: Ensure unattended-upgrades is installed (provides security-pocket tooling)
+  ansible.builtin.apt:
+    name: "{{ security_patch_unattended_package['Debian'] }}"
+    state: present
+    update_cache: true
+  tags: [patch, security_only_patching]
+
+- name: Dry-run unattended-upgrades to preview security-pocket changes
+  ansible.builtin.command: unattended-upgrade --dry-run --debug
+  register: security_patch_debian_dryrun
+  changed_when: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: security_patch_debian_dry_run_first | bool
+  tags: [patch, security_only_patching]
+
+- name: Log dry-run output for audit trail
+  ansible.builtin.debug:
+    msg: "{{ security_patch_debian_dryrun.stdout_lines | default([]) }}"
+  when: security_patch_debian_dry_run_first | bool
+  tags: [patch, security_only_patching]
+
+- name: List upgradable packages restricted to the security pocket allowlist
+  ansible.builtin.shell: >
+    set -o pipefail &&
+    apt list --upgradable 2>/dev/null | grep -F -f <(printf '%s\n' {{ security_patch_debian_allowed_origins | map('quote') | join(' ') }})
+  args:
+    executable: /bin/bash
+  register: security_patch_debian_candidates
+  changed_when: false
+  failed_when: false
+  tags: [patch, security_only_patching]
+
+- name: Apply only allow-listed security-pocket package upgrades
+  ansible.builtin.apt:
+    name: "{{ item.split('/')[0] }}"
+    state: latest
+    default_release: "{{ ansible_facts['distribution_release'] }}-security"
+  loop: "{{ security_patch_debian_candidates.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item.split('/')[0] }}"
+  when: security_patch_debian_candidates.stdout_lines is defined and security_patch_debian_candidates.stdout_lines | length > 0
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: security_patch_debian_result
+  tags: [patch, security_only_patching]
+
+- name: Run unattended-upgrade for real to apply security-pocket updates (fallback path)
+  ansible.builtin.command: unattended-upgrade --debug
+  register: security_patch_debian_apply
+  changed_when: "'Packages that will be upgraded' in security_patch_debian_apply.stdout"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when:
+    - not security_patch_debian_dry_run_first | bool
+    - security_patch_debian_candidates.stdout_lines is not defined or security_patch_debian_candidates.stdout_lines | length == 0
+  tags: [patch, security_only_patching]

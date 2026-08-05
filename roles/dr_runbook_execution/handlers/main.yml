@@ -1,0 +1,8 @@
+---
+# roles/dr_runbook_execution/handlers/main.yml
+# This orchestration role does not directly manage a service; each chained
+# role owns its own handlers. Retained for convention consistency.
+- name: Noop runbook handler placeholder
+  ansible.builtin.debug:
+    msg: "No direct service action required for dr_runbook_execution"
+  listen: "Archive runbook report"

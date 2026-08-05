@@ -1,0 +1,24 @@
+---
+# roles/certificate_management/handlers/main.yml
+# Generic per-service reload handlers, driven by the notify_service field on
+# each certificate_deployments entry. Add additional named handlers here to
+# support more services as they are onboarded.
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+
+- name: Reload httpd
+  ansible.builtin.service:
+    name: httpd
+    state: reloaded
+
+- name: Reload apache2
+  ansible.builtin.service:
+    name: apache2
+    state: reloaded
+
+- name: Reload haproxy
+  ansible.builtin.service:
+    name: haproxy
+    state: reloaded

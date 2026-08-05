@@ -1,0 +1,52 @@
+---
+# roles/sudo_privilege_management/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "sudo_privilege_management supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, sudo]
+
+- name: Ensure sudo package is installed
+  ansible.builtin.package:
+    name: sudo
+    state: present
+  tags: [security, sudo]
+
+- name: Ensure sudoers.d backup directory exists
+  ansible.builtin.file:
+    path: "{{ sudo_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: sudo_backup_existing_files | bool
+  tags: [security, sudo]
+
+- name: Discover existing sudoers.d files managed by this role
+  ansible.builtin.find:
+    paths: "{{ sudo_sudoers_d_path }}"
+    patterns: "*.conf"
+    contains: "Managed by the sudo_privilege_management Ansible role"
+  register: _sudo_existing_managed_files
+  tags: [security, sudo]
+
+- name: Deploy and validate each declared sudoers rule
+  ansible.builtin.include_tasks: deploy_rule.yml
+  loop: "{{ sudo_rules }}"
+  loop_control:
+    loop_var: rule
+    label: "{{ rule.name }}"
+  tags: [security, sudo]
+
+- name: Prune sudoers.d files no longer declared in sudo_rules
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _sudo_existing_managed_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when:
+    - sudo_prune_unmanaged_files | bool
+    - item.path not in (sudo_rules | map(attribute='name') | map('regex_replace', '^(.*)$', sudo_sudoers_d_path + '/\\1.conf') | list)
+  tags: [security, sudo]

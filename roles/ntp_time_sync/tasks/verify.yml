@@ -1,0 +1,57 @@
+---
+# roles/ntp_time_sync/tasks/verify.yml — health-check that time sync is actually working
+- name: "Check chronyd tracking status (retries up to {{ ntp_sync_check_retries }} times)"
+  ansible.builtin.command:
+    cmd: chronyc tracking
+  register: _chrony_tracking
+  changed_when: false
+  failed_when: false
+  retries: "{{ ntp_sync_check_retries }}"
+  delay: "{{ ntp_sync_check_delay }}"
+  until: "'Leap status     : Normal' in _chrony_tracking.stdout"
+  when: not ntp_use_systemd_timesyncd_fallback | bool
+  tags: [security, ntp]
+
+- name: "Check systemd-timesyncd sync status (retries up to {{ ntp_sync_check_retries }} times)"
+  ansible.builtin.command:
+    cmd: timedatectl show --property=NTPSynchronized --value
+  register: _timesyncd_status
+  changed_when: false
+  failed_when: false
+  retries: "{{ ntp_sync_check_retries }}"
+  delay: "{{ ntp_sync_check_delay }}"
+  until: "_timesyncd_status.stdout | trim == 'yes'"
+  when: ntp_use_systemd_timesyncd_fallback | bool
+  tags: [security, ntp]
+
+- name: Report chrony sync verification result
+  ansible.builtin.debug:
+    msg: "{{ _chrony_tracking.stdout_lines }}"
+  when:
+    - not ntp_use_systemd_timesyncd_fallback | bool
+    - _chrony_tracking.stdout is defined
+  tags: [security, ntp]
+
+- name: Warn if chrony sync could not be verified
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: chronyd tracking did not report Normal leap status after
+      {{ ntp_sync_check_retries }} attempts. Investigate NTP reachability
+      for this host — {{ ntp_servers | join(', ') }}.
+  when:
+    - not ntp_use_systemd_timesyncd_fallback | bool
+    - _chrony_tracking.stdout is defined
+    - "'Leap status     : Normal' not in _chrony_tracking.stdout"
+  tags: [security, ntp]
+
+- name: Warn if systemd-timesyncd sync could not be verified
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: systemd-timesyncd did not report NTPSynchronized=yes after
+      {{ ntp_sync_check_retries }} attempts. Investigate NTP reachability
+      for this host — {{ ntp_servers | join(', ') }}.
+  when:
+    - ntp_use_systemd_timesyncd_fallback | bool
+    - _timesyncd_status.stdout is defined
+    - _timesyncd_status.stdout | trim != 'yes'
+  tags: [security, ntp]

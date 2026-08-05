@@ -1,0 +1,6 @@
+---
+# roles/third_party_repo_hardening/handlers/main.yml
+- name: Refresh apt cache after third-party repo change
+  ansible.builtin.apt:
+    update_cache: true
+  when: ansible_facts['os_family'] == 'Debian'

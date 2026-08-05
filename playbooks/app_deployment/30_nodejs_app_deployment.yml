@@ -1,0 +1,9 @@
+---
+- name: Deploy the Node.js application release across the fleet
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: nodejs_app_deployment
+  tags: [deploy, nodejs]

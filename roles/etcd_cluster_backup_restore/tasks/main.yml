@@ -1,0 +1,46 @@
+---
+# roles/etcd_cluster_backup_restore/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "etcd_cluster_backup_restore supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, etcd]
+
+- name: Assert etcd_action is valid
+  ansible.builtin.assert:
+    that:
+      - etcd_action in ['snapshot', 'restore']
+    fail_msg: "etcd_action must be snapshot or restore (found {{ etcd_action }})"
+  tags: [dr, etcd]
+
+- name: Install etcdctl client dependencies
+  ansible.builtin.package:
+    name: "{{ etcd_client_dependency_packages[ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, etcd]
+
+- name: Verify etcdctl binary is present
+  ansible.builtin.stat:
+    path: "{{ etcd_binary_path }}"
+  register: etcd_binary_stat
+  tags: [dr, etcd]
+
+- name: Fail if etcdctl binary is not installed
+  ansible.builtin.assert:
+    that:
+      - etcd_binary_stat.stat.exists
+    fail_msg: >-
+      etcdctl not found at {{ etcd_binary_path }}. Install it as part of the
+      kubernetes_node_bootstrap role before running this role.
+  tags: [dr, etcd]
+
+- name: Include snapshot workflow
+  ansible.builtin.include_tasks: snapshot.yml
+  when: etcd_action == 'snapshot'
+  tags: [dr, etcd]
+
+- name: Include restore workflow
+  ansible.builtin.include_tasks: restore.yml
+  when: etcd_action == 'restore'
+  tags: [dr, etcd]

@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: etcd_cluster_backup_restore
+  author: DevOps Automation Collection
+  description: Snapshots etcd cluster state on Kubernetes control-plane nodes, ships snapshots to a backup destination, and provides a guarded manual-confirmation restore path.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - etcd
+    - kubernetes
+dependencies: []

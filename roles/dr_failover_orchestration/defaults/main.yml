@@ -1,0 +1,48 @@
+---
+# roles/dr_failover_orchestration/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Target DR site -------------------------------------------------------------
+dr_site_group: dr_site                # inventory group representing the DR site hosts
+dr_failover_confirm: false            # must be explicitly true to allow failover to proceed
+
+# --- DR site health checks -------------------------------------------------------
+dr_health_check_urls:
+  - "https://dr-app.internal.example.com/healthz"
+dr_health_check_timeout_seconds: 10
+dr_health_check_retries: 5
+dr_health_check_delay_seconds: 5
+
+# --- Standby database promotion --------------------------------------------------
+dr_promote_database: true
+dr_database_engine: postgresql        # mysql | postgresql
+dr_promotion_method: replica_command  # replica_command | restore
+# When dr_promotion_method == replica_command, this command is executed on the standby
+# to promote it to primary (e.g. `pg_ctl promote`, `mysqlrpladmin`).
+dr_replica_promote_command: "/usr/bin/pg_ctl promote -D /var/lib/pgsql/data"
+dr_db_name: "app_production"
+
+# --- DNS / load-balancer repoint -------------------------------------------------
+dr_lb_config_template: "haproxy_dr.cfg.j2"
+dr_lb_config_dest: "/etc/haproxy/haproxy.cfg"
+dr_lb_service_name: haproxy
+dr_dns_repoint_enabled: true
+dr_dns_record_name: "app.example.com"
+dr_dns_target_ip: "{{ hostvars[groups[dr_site_group][0]]['ansible_default_ipv4']['address'] | default('0.0.0.0') }}"
+dr_dns_ttl_seconds: 60
+
+# --- Secrets manager (DNS provider API token / DB creds) --------------------------
+dr_credential_source: vault            # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/dr/failover"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   dns_api_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                        engine_mount_point=vault_kv_mount, url=vault_addr).secret.dns_api_token }}"
+# AWS Secrets Manager example:
+#   dns_api_token: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Notification -----------------------------------------------------------------
+dr_notify_webhook_url: ""

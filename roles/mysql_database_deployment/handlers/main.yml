@@ -1,0 +1,6 @@
+---
+# roles/mysql_database_deployment/handlers/main.yml
+- name: Restart mysql
+  ansible.builtin.service:
+    name: "{{ mysql_service_name[ansible_facts['os_family']][mysql_flavor] }}"
+    state: restarted

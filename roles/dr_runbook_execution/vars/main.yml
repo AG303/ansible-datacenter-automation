@@ -1,0 +1,11 @@
+---
+# roles/dr_runbook_execution/vars/main.yml
+# This orchestration role has no OS-package/service name mapping of its own —
+# each chained role manages its own OS-family branching. Retained empty for
+# convention consistency and potential future orchestration-only facts.
+dr_runbook_step_order:
+  - health_check
+  - snapshot
+  - failover
+  - verification
+  - notification

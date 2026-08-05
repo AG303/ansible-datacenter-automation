@@ -1,0 +1,5 @@
+---
+# roles/os_patch_rolling_update/handlers/main.yml
+# No handlers are required: package upgrades in this role do not themselves
+# restart services (that is the job of dedicated app/service roles). Kept for
+# structural consistency across the collection.

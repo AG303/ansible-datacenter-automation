@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+# Managed by the vault_agent_integration Ansible role — do not edit by hand.
+
+[Unit]
+Description=HashiCorp Vault Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ vault_agent_user }}
+Group={{ vault_agent_group }}
+ExecStart={{ vault_agent_install_dir }}/vault agent -config={{ vault_agent_config_dir }}/vault-agent.hcl
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

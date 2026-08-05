@@ -1,0 +1,28 @@
+---
+# roles/ntp_time_sync/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "ntp_time_sync supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, ntp]
+
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ ntp_timezone }}"
+  tags: [security, ntp]
+
+- name: Include RedHat-specific tasks (chrony only)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [security, ntp]
+
+- name: Include Debian-specific tasks (chrony or systemd-timesyncd fallback)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [security, ntp]
+
+- name: Verify time sync status
+  ansible.builtin.include_tasks: verify.yml
+  when: ntp_verify_sync_after_deploy | bool
+  tags: [security, ntp]

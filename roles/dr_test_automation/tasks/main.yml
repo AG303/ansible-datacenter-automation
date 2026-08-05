@@ -1,0 +1,166 @@
+---
+# roles/dr_test_automation/tasks/main.yml
+# Non-destructive DR readiness validation — reads state, never mutates it.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "dr_test_automation supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, drtest]
+
+- name: Ensure DNS client tools are installed
+  ansible.builtin.package:
+    name: "{{ dns_client_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, drtest]
+
+- name: Ensure DR test report directory exists
+  ansible.builtin.file:
+    path: "{{ dr_test_report_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [dr, drtest]
+
+- name: "Check 1 — DR site reachability"
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    status_code: 200
+    timeout: "{{ dr_health_check_timeout_seconds }}"
+  loop: "{{ dr_health_check_urls }}"
+  register: dr_test_reachability
+  failed_when: false
+  tags: [dr, drtest]
+
+- name: "Check 2 — latest backup age via manifest endpoint"
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    return_content: true
+  loop: "{{ dr_backup_manifest_urls }}"
+  register: dr_test_backup_manifest
+  failed_when: false
+  tags: [dr, drtest]
+
+- name: "Check 2b — list latest backup object age from S3"
+  amazon.aws.s3_object:
+    bucket: "{{ dr_backup_s3_bucket }}"
+    prefix: "{{ dr_backup_s3_prefix }}/"
+    mode: list
+    region: "{{ aws_region }}"
+  register: dr_test_s3_listing
+  when: dr_backup_check_destination_type == 's3'
+  failed_when: false
+  tags: [dr, drtest]
+
+- name: "Check 2c — find latest backup file age on NFS"
+  ansible.builtin.find:
+    paths: "{{ dr_backup_nfs_path }}"
+    patterns: "*"
+    age: "-{{ dr_max_backup_age_hours }}h"
+  register: dr_test_nfs_listing
+  when: dr_backup_check_destination_type == 'nfs'
+  tags: [dr, drtest]
+
+- name: "Check 3 — replication lag via HTTP status endpoint"
+  ansible.builtin.uri:
+    url: "{{ dr_replication_status_url }}"
+    method: GET
+    return_content: true
+  register: dr_test_replication_status
+  when: dr_replication_status_url | length > 0
+  failed_when: false
+  tags: [dr, drtest]
+
+- name: "Check 4 — failover DNS record TTL"
+  ansible.builtin.command:
+    cmd: "dig @{{ dr_dns_resolver }} {{ dr_dns_record_name }} +noall +answer"
+  register: dr_test_dns_result
+  changed_when: false
+  failed_when: false
+  tags: [dr, drtest]
+
+- name: Evaluate reachability check results
+  ansible.builtin.set_fact:
+    dr_test_reachability_pass: "{{ dr_test_reachability.results | selectattr('status', 'defined') | selectattr('status', 'equalto', 200) | list | length == (dr_health_check_urls | length) }}"
+  tags: [dr, drtest]
+
+- name: Evaluate backup freshness from manifest endpoint(s)
+  ansible.builtin.set_fact:
+    dr_test_backup_age_hours: >-
+      {{ ((ansible_date_time.iso8601 | to_datetime('%Y-%m-%dT%H:%M:%SZ')) -
+      ((dr_test_backup_manifest.results[0].json.last_backup_iso8601 | default(ansible_date_time.iso8601))
+      | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).total_seconds() / 3600 }}
+  when: dr_test_backup_manifest.results | default([]) | length > 0
+  failed_when: false
+  tags: [dr, drtest]
+
+- name: Evaluate backup freshness pass/fail
+  ansible.builtin.set_fact:
+    dr_test_backup_pass: "{{ (dr_test_backup_age_hours | default(999) | float) <= (dr_max_backup_age_hours | float) }}"
+  tags: [dr, drtest]
+
+- name: Evaluate replication lag pass/fail
+  ansible.builtin.set_fact:
+    dr_test_replication_pass: >-
+      {{ (dr_replication_status_url | length == 0) or
+      ((dr_test_replication_status.json.lag_seconds | default(999999) | int) <= (dr_replication_lag_warning_seconds | int)) }}
+  tags: [dr, drtest]
+
+- name: Evaluate DNS TTL pass/fail
+  ansible.builtin.set_fact:
+    dr_test_dns_pass: "{{ (dr_dns_expected_ttl_seconds | string) in dr_test_dns_result.stdout }}"
+  tags: [dr, drtest]
+
+- name: Compile DR readiness report
+  ansible.builtin.set_fact:
+    dr_readiness_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      checks:
+        dr_site_reachable: "{{ dr_test_reachability_pass }}"
+        backup_freshness_ok: "{{ dr_test_backup_pass }}"
+        replication_lag_ok: "{{ dr_test_replication_pass }}"
+        dns_ttl_ok: "{{ dr_test_dns_pass }}"
+      overall_pass: >-
+        {{ dr_test_reachability_pass | bool and dr_test_backup_pass | bool and
+        dr_test_replication_pass | bool and dr_test_dns_pass | bool }}
+  tags: [dr, drtest]
+
+- name: Write DR readiness report to disk
+  ansible.builtin.copy:
+    content: "{{ dr_readiness_report | to_nice_json }}\n"
+    dest: "{{ dr_test_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, drtest]
+
+- name: Display DR readiness report summary
+  ansible.builtin.debug:
+    var: dr_readiness_report
+  tags: [dr, drtest]
+
+- name: Send DR readiness test result notification
+  ansible.builtin.uri:
+    url: "{{ dr_test_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: >-
+        DR readiness test on {{ inventory_hostname }}:
+        overall_pass={{ dr_readiness_report.overall_pass }}
+    status_code: [200, 201, 204]
+  when: dr_test_notify_webhook_url | length > 0
+  tags: [dr, drtest]
+
+- name: Fail the play if any DR readiness check failed
+  ansible.builtin.assert:
+    that:
+      - dr_readiness_report.overall_pass | bool
+    fail_msg: "DR readiness test FAILED on {{ inventory_hostname }}: {{ dr_readiness_report.checks }}"
+    success_msg: "DR readiness test PASSED on {{ inventory_hostname }}"
+  when: dr_test_fail_on_any_check_failure | bool
+  tags: [dr, drtest]

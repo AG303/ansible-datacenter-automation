@@ -1,0 +1,43 @@
+---
+# roles/compliance_scan_reporting/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+#
+# General hygiene scanning only — this role is NOT tied to any named
+# certification and does not map findings to CIS/STIG control IDs.
+
+# --- Scan tool selection -----------------------------------------------
+# lynis is the default, general-purpose audit tool available on both OS
+# families. openscap_scanner is used instead when explicitly requested and
+# present on the host (typically RedHat-family only).
+compliance_scan_tool: lynis          # lynis|openscap_scanner
+
+# --- Scan scheduling / execution --------------------------------------------
+compliance_scan_report_dir: /var/log/compliance-scans
+compliance_scan_profile: default     # lynis profile name, or oscap profile id when using openscap
+
+# --- Result destination -------------------------------------------------
+# Where the pass/warn/fail summary is pushed after each scan. Configure
+# exactly one of the two delivery mechanisms below.
+compliance_report_delivery: webhook   # webhook|s3
+compliance_report_webhook_url: ""     # e.g. "https://siem.internal.example.com/hooks/compliance-scan"
+compliance_report_s3_bucket: ""       # e.g. "datacenter-compliance-reports"
+compliance_report_s3_prefix: "lynis-reports"
+aws_region: "us-east-1"
+
+# --- Secrets manager integration -------------------------------------------
+# If the webhook requires bearer-token auth, or the S3 push requires
+# explicit (non-instance-role) credentials, pull them from the external
+# secrets manager rather than hardcoding them.
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/compliance_scan/webhook_token"
+# HashiCorp Vault example:
+#   compliance_webhook_bearer_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                        engine_mount_point=vault_kv_mount, url=vault_addr).secret.token }}"
+# AWS Secrets Manager example:
+#   compliance_webhook_bearer_token: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+compliance_webhook_auth_from_vault_enabled: false
+
+# --- Retention ---------------------------------------------------------
+compliance_scan_retain_reports: 10

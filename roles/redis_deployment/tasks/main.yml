@@ -1,0 +1,67 @@
+---
+# roles/redis_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "redis_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, redis]
+
+- name: Assert supported redis_persistence_mode
+  ansible.builtin.assert:
+    that:
+      - redis_persistence_mode in ['rdb', 'aof', 'both']
+    fail_msg: "redis_persistence_mode must be rdb, aof, or both (found {{ redis_persistence_mode }})"
+  tags: [deploy, redis]
+
+- name: Include RedHat-specific tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, redis]
+
+- name: Include Debian-specific tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, redis]
+
+- name: Install Redis server package
+  ansible.builtin.package:
+    name: "{{ redis_package_name[ansible_facts['os_family']] }}"
+    state: "{{ redis_package_state }}"
+  tags: [deploy, redis]
+
+- name: Template redis.conf from vars
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: "{{ redis_conf_path[ansible_facts['os_family']] }}"
+    owner: redis
+    group: redis
+    mode: "0640"
+  notify: Restart redis
+  tags: [deploy, redis]
+
+- name: Ensure redis service is enabled and running
+  ansible.builtin.service:
+    name: "{{ redis_service_name[ansible_facts['os_family']] }}"
+    state: "{{ redis_service_state }}"
+    enabled: "{{ redis_service_enabled | bool }}"
+  tags: [deploy, redis]
+
+- name: Template sentinel.conf and enable Sentinel (guarded, optional HA setup)
+  ansible.builtin.template:
+    src: sentinel.conf.j2
+    dest: "{{ redis_sentinel_conf_path[ansible_facts['os_family']] }}"
+    owner: redis
+    group: redis
+    mode: "0640"
+  when: redis_sentinel_enabled | bool
+  notify: Restart sentinel
+  tags: [deploy, redis]
+
+- name: Ensure Redis Sentinel service is enabled and running (guarded, optional HA setup)
+  ansible.builtin.service:
+    name: "{{ redis_sentinel_service_name[ansible_facts['os_family']] }}"
+    state: started
+    enabled: true
+  when: redis_sentinel_enabled | bool
+  tags: [deploy, redis]

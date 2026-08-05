@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: security_only_patching
+  author: DevOps Automation Collection
+  description: Applies only security-classified package updates — dnf/yum security errata on RHEL family, allow-listed security-pocket updates via unattended-upgrades on Debian family.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - security_only_patching
+    - security
+dependencies: []

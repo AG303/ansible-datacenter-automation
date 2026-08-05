@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: cross_region_data_sync
+  author: DevOps Automation Collection
+  description: Periodic rsync/rclone sync of application data directories from primary site hosts to DR-site hosts, with bandwidth-limit and exclude-pattern controls and a sync-lag report.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - crossregionsync
+dependencies: []

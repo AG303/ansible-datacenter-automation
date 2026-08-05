@@ -1,0 +1,41 @@
+---
+# roles/replication_health_check/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- What to check --------------------------------------------------------------
+replication_check_database: true
+replication_check_filesystem: true
+replication_db_engine: postgresql        # mysql | postgresql
+
+# --- Database connection details ---------------------------------------------------
+replication_db_host: "127.0.0.1"
+replication_db_port: "{{ 3306 if replication_db_engine == 'mysql' else 5432 }}"
+replication_db_name: "app_production"
+replication_db_user: "{{ 'root' if replication_db_engine == 'mysql' else 'postgres' }}"
+
+# --- Credentials (NEVER hardcode) ------------------------------------------------------
+replication_credential_source: vault      # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/database/{{ replication_db_engine }}/{{ replication_db_name }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   replication_db_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                 engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+# AWS Secrets Manager example:
+#   replication_db_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Thresholds --------------------------------------------------------------------------
+replication_lag_warning_seconds: 60
+
+# --- Filesystem/storage replication (rsync-based mirror freshness) -------------------------
+replication_fs_primary_path: /data/app
+replication_fs_mirror_path: /data/app-mirror     # local mirror path, or a path on dr_site_group hosts
+replication_fs_mirror_hosts_group: dr_site
+replication_fs_max_staleness_seconds: 900
+
+# --- Reporting / notification ---------------------------------------------------------------
+replication_report_path: "/var/log/replication_health_check/report-{{ ansible_date_time.iso8601_basic_short }}.json"
+replication_notify_webhook_url: ""
+replication_fail_on_lag_exceeded: true

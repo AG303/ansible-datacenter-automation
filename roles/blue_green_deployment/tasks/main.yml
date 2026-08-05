@@ -1,0 +1,101 @@
+---
+# roles/blue_green_deployment/tasks/main.yml
+# Generic blue/green orchestration: determine the idle color, deploy the given
+# app_deploy_role into it, health-check it, flip the load balancer upstream to
+# point at the newly-deployed color, then mark the previous color idle. This
+# role's tasks are intended to run against `localhost`/the control node driving
+# the orchestration — the actual app deploy and LB update delegate to the
+# appropriate target hosts via `delegate_to` / dynamically included roles.
+
+- name: Assert blue_green_active_color is valid
+  ansible.builtin.assert:
+    that:
+      - blue_green_active_color in ['blue', 'green']
+    fail_msg: "blue_green_active_color must be 'blue' or 'green' (found {{ blue_green_active_color }})"
+  tags: [deploy, blue_green]
+
+- name: Assert blue_green_lb_type is supported
+  ansible.builtin.assert:
+    that:
+      - blue_green_lb_type in ['haproxy', 'nginx']
+    fail_msg: "blue_green_lb_type must be 'haproxy' or 'nginx' (found {{ blue_green_lb_type }})"
+  tags: [deploy, blue_green]
+
+- name: Determine the idle color (the one NOT currently live)
+  ansible.builtin.set_fact:
+    blue_green_idle_color: "{{ 'green' if blue_green_active_color == 'blue' else 'blue' }}"
+  tags: [deploy, blue_green]
+
+- name: Resolve the idle color's inventory group name
+  ansible.builtin.set_fact:
+    blue_green_idle_group: "{{ blue_green_color_groups[blue_green_idle_color] }}"
+    blue_green_active_group: "{{ blue_green_color_groups[blue_green_active_color] }}"
+  tags: [deploy, blue_green]
+
+- name: Report the planned blue/green action
+  ansible.builtin.debug:
+    msg: >-
+      Deploying '{{ app_deploy_role }}' onto idle color '{{ blue_green_idle_color }}'
+      (group: {{ blue_green_idle_group }}). Currently live color is
+      '{{ blue_green_active_color }}' (group: {{ blue_green_active_group }}).
+  tags: [deploy, blue_green]
+
+# NOTE ON ORCHESTRATION: this role only performs the pre-flip validation,
+# health-checking, load-balancer flip, and reporting steps below. It does NOT
+# itself deploy the application onto the idle color's hosts, because a role
+# cannot re-target a different set of hosts than the play that included it —
+# `include_role` + `delegate_to` + `loop` is not valid Ansible (delegate_to only
+# affects where each *task* in the included role runs, not a batch of hosts).
+#
+# The correct pattern is a multi-play playbook:
+#   Play 1 (localhost): resolve the idle group, `add_host` its members into a
+#                        dynamic group (e.g. `bg_idle_targets`)
+#   Play 2 (hosts: bg_idle_targets): roles: ["{{ app_deploy_role }}"]  <-- actual deploy
+#   Play 3 (localhost): roles: [blue_green_deployment]                <-- this role
+# See playbooks/app_deployment/36_blue_green_deployment.yml for the reference
+# implementation of this pattern.
+
+# --- Step 2: health-check every host in the idle color before it takes traffic.
+- name: Health-check each newly-deployed idle-color host
+  ansible.builtin.uri:
+    url: >-
+      {{ blue_green_health_check_scheme }}://{{ hostvars[item]['ansible_host'] | default(item) }}:
+      {{ blue_green_backend_port }}{{ blue_green_health_check_path }}
+    status_code: 200
+  register: blue_green_health_result
+  retries: "{{ blue_green_health_check_retries }}"
+  delay: "{{ blue_green_health_check_delay }}"
+  until: blue_green_health_result.status == 200
+  loop: "{{ groups[blue_green_idle_group] | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  tags: [deploy, blue_green]
+
+# --- Safety gate before flipping live production traffic ----------------------
+- name: Pause for operator approval before flipping live traffic
+  ansible.builtin.pause:
+    prompt: >-
+      All {{ blue_green_idle_color }} hosts passed health checks. Press ENTER to flip
+      live traffic from '{{ blue_green_active_color }}' to '{{ blue_green_idle_color }}',
+      or Ctrl+C then 'A' to abort.
+  when: blue_green_require_manual_approval | bool
+  tags: [deploy, blue_green]
+
+# --- Step 3: flip the load balancer upstream to the newly-verified idle color.
+- name: Flip HAProxy backend to the newly-verified color
+  ansible.builtin.include_tasks: flip_haproxy.yml
+  when: blue_green_lb_type == 'haproxy'
+  tags: [deploy, blue_green]
+
+- name: Flip nginx upstream to the newly-verified color
+  ansible.builtin.include_tasks: flip_nginx.yml
+  when: blue_green_lb_type == 'nginx'
+  tags: [deploy, blue_green]
+
+- name: Report the completed flip
+  ansible.builtin.debug:
+    msg: >-
+      Traffic flipped: '{{ blue_green_idle_color }}' is now live,
+      '{{ blue_green_active_color }}' is now idle and safe to decommission,
+      patch, or hold in reserve for the next rollback window.
+  tags: [deploy, blue_green]

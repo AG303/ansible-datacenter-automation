@@ -1,0 +1,18 @@
+---
+# roles/third_party_repo_hardening/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "third_party_repo_hardening supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, third_party_repo_hardening]
+
+- name: Include RedHat-family EPEL hardening tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, third_party_repo_hardening]
+
+- name: Include Debian-family PPA-style repo hardening tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, third_party_repo_hardening]

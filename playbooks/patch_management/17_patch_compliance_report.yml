@@ -1,0 +1,8 @@
+---
+- name: Cross-reference installed packages against the required patch baseline
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: patch_compliance_report
+  tags: [patch, patch_compliance_report]

@@ -1,0 +1,30 @@
+---
+# roles/blue_green_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Color group wiring --------------------------------------------------------
+blue_group: "blue_group"                # Ansible inventory group name for the "blue" color
+green_group: "green_group"              # Ansible inventory group name for the "green" color
+
+# --- Which color is currently live, and which app role to deploy into the idle one.
+# Track blue_green_active_color centrally (e.g. group_vars/all.yml or a CMDB-backed
+# lookup) and update it after every successful flip.
+blue_green_active_color: "blue"         # "blue" or "green" — whichever is currently serving production traffic
+app_deploy_role: "nodejs_app_deployment"  # any of this collection's *_app_deployment roles, included dynamically
+
+# --- Load balancer integration ---------------------------------------------------
+blue_green_lb_type: "haproxy"           # "haproxy" or "nginx"
+blue_green_lb_hosts: "load_balancers"   # inventory group of LB hosts to update on flip
+blue_green_backend_name: "app_backend"  # matches the haproxy_backends[].name or nginx upstream block name being flipped
+blue_green_backend_port: 8080
+
+# --- Health check before flipping traffic -----------------------------------------
+blue_green_health_check_path: "/health"
+blue_green_health_check_scheme: "http"
+blue_green_health_check_timeout: 60
+blue_green_health_check_retries: 10
+blue_green_health_check_delay: 5
+
+# --- Safety gate -------------------------------------------------------------------
+blue_green_require_manual_approval: true   # pause for operator confirmation before flipping live traffic

@@ -1,0 +1,132 @@
+---
+# roles/nodejs_app_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "nodejs_app_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, nodejs]
+
+- name: Include RedHat-specific Node.js install tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, nodejs]
+
+- name: Include Debian-specific Node.js install tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, nodejs]
+
+- name: Ensure application service group exists
+  ansible.builtin.group:
+    name: "{{ app_service_group }}"
+    state: present
+  tags: [deploy, nodejs]
+
+- name: Ensure application service user exists (no login shell)
+  ansible.builtin.user:
+    name: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+    home: "{{ app_base_dir }}"
+  tags: [deploy, nodejs]
+
+- name: Ensure application base and releases directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    mode: "0755"
+  loop:
+    - "{{ app_base_dir }}"
+    - "{{ app_base_dir }}/releases"
+  tags: [deploy, nodejs]
+
+- name: Set release identifier for this deployment
+  ansible.builtin.set_fact:
+    app_release_id: "{{ app_git_version if app_source_type == 'git' else (app_artifact_url | basename | regex_replace('\\.(tar\\.gz|tgz|zip)$', '')) }}-{{ ansible_date_time.iso8601_basic_short }}"
+  tags: [deploy, nodejs]
+
+- name: Checkout application source from git
+  ansible.builtin.git:
+    repo: "{{ app_git_repo }}"
+    dest: "{{ app_base_dir }}/releases/{{ app_release_id }}"
+    version: "{{ app_git_version }}"
+    force: true
+  become: true
+  become_user: "{{ app_service_user }}"
+  when: app_source_type == 'git'
+  tags: [deploy, nodejs]
+
+- name: Download and unpack application artifact tarball
+  ansible.builtin.unarchive:
+    src: "{{ app_artifact_url }}"
+    dest: "{{ app_base_dir }}/releases/{{ app_release_id }}"
+    remote_src: true
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+    creates: "{{ app_base_dir }}/releases/{{ app_release_id }}/package.json"
+  when: app_source_type == 'tarball'
+  tags: [deploy, nodejs]
+
+- name: Install production npm dependencies (npm ci)
+  community.general.npm:
+    path: "{{ app_base_dir }}/releases/{{ app_release_id }}"
+    production: "{{ app_npm_ci_production }}"
+    ci: true
+  become: true
+  become_user: "{{ app_service_user }}"
+  tags: [deploy, nodejs]
+
+- name: Symlink current release
+  ansible.builtin.file:
+    src: "{{ app_base_dir }}/releases/{{ app_release_id }}"
+    dest: "{{ app_base_dir }}/current"
+    state: link
+    force: true
+    owner: "{{ app_service_user }}"
+    group: "{{ app_service_group }}"
+  notify: Restart nodejs app
+  tags: [deploy, nodejs]
+
+- name: Template systemd unit for the Node.js application
+  ansible.builtin.template:
+    src: nodejs_app.service.j2
+    dest: "/etc/systemd/system/{{ app_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart nodejs app
+  tags: [deploy, nodejs]
+
+- name: Ensure application service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ app_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  tags: [deploy, nodejs]
+
+- name: Wait for application to accept connections after (re)start
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ app_port }}"
+    delay: "{{ app_health_check_delay }}"
+    timeout: "{{ app_health_check_timeout }}"
+  tags: [deploy, nodejs]
+
+- name: Perform post-deploy HTTP health check
+  ansible.builtin.uri:
+    url: "{{ app_health_check_url }}"
+    status_code: 200
+    return_content: false
+  register: app_health_check_result
+  retries: "{{ app_health_check_retries }}"
+  delay: "{{ app_health_check_delay }}"
+  until: app_health_check_result.status == 200
+  tags: [deploy, nodejs]

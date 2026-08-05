@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: patch_inventory_facts
+  author: DevOps Automation Collection
+  description: Fleet-wide reporting role that gathers per-host available-update counts and installed package facts, aggregating a JSON/CSV summary at play end.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - reporting
+    - inventory
+dependencies: []

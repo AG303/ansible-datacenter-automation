@@ -1,0 +1,11 @@
+---
+# roles/ntp_time_sync/handlers/main.yml
+- name: Restart chronyd
+  ansible.builtin.service:
+    name: "{{ chrony_service_name[ansible_facts['os_family']] }}"
+    state: restarted
+
+- name: Restart systemd-timesyncd
+  ansible.builtin.service:
+    name: "{{ timesyncd_service_name[ansible_facts['os_family']] }}"
+    state: restarted

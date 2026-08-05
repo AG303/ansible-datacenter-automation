@@ -1,0 +1,11 @@
+---
+# roles/dr_failover_orchestration/vars/main.yml
+# OS-family specific facts for the load-balancer package/service managed here.
+
+lb_package_name:
+  RedHat: haproxy
+  Debian: haproxy
+
+lb_config_path:
+  RedHat: /etc/haproxy/haproxy.cfg
+  Debian: /etc/haproxy/haproxy.cfg

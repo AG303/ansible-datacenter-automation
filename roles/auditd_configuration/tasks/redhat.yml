@@ -1,0 +1,10 @@
+---
+# roles/auditd_configuration/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure audit-libs and audispd-plugins are present (syslog forwarding support)
+  ansible.builtin.package:
+    name:
+      - audit-libs
+      - audispd-plugins
+    state: present
+  when: auditd_forward_to_syslog_enabled | bool
+  tags: [security, auditd]

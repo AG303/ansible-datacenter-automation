@@ -1,0 +1,76 @@
+---
+# roles/haproxy_load_balancer/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "haproxy_load_balancer supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, haproxy]
+
+- name: Ensure haproxy package is installed
+  ansible.builtin.package:
+    name: "{{ haproxy_package_name[ansible_facts['os_family']] }}"
+    state: "{{ haproxy_package_state }}"
+  tags: [deploy, haproxy]
+
+- name: Include RedHat-specific tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, haproxy]
+
+- name: Include Debian-specific tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, haproxy]
+
+- name: Backup existing haproxy.cfg before modification
+  ansible.builtin.copy:
+    src: "{{ haproxy_conf_path[ansible_facts['os_family']] }}"
+    dest: "{{ haproxy_conf_path[ansible_facts['os_family']] }}.bak-{{ ansible_date_time.iso8601_basic_short }}"
+    remote_src: true
+    mode: "0644"
+  when: haproxy_backup_existing_config | bool
+  changed_when: false
+  ignore_errors: true            # first run has no existing file to back up
+  tags: [deploy, haproxy]
+
+- name: Render haproxy.cfg to a staging path for validation
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg.staged
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [deploy, haproxy]
+
+- name: Validate staged haproxy.cfg syntax before activating
+  ansible.builtin.command: "haproxy -c -f /etc/haproxy/haproxy.cfg.staged"
+  register: haproxy_validate_result
+  changed_when: false
+  when: haproxy_validate_config_before_reload | bool
+  tags: [deploy, haproxy]
+
+- name: Activate the validated haproxy.cfg
+  ansible.builtin.copy:
+    src: /etc/haproxy/haproxy.cfg.staged
+    dest: "{{ haproxy_conf_path[ansible_facts['os_family']] }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload haproxy
+  tags: [deploy, haproxy]
+
+- name: Remove the staging file
+  ansible.builtin.file:
+    path: /etc/haproxy/haproxy.cfg.staged
+    state: absent
+  changed_when: false
+  tags: [deploy, haproxy]
+
+- name: Ensure haproxy service is enabled and running
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name[ansible_facts['os_family']] }}"
+    state: "{{ haproxy_service_state }}"
+    enabled: "{{ haproxy_service_enabled | bool }}"
+  tags: [deploy, haproxy]

@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: artifact_registry_deployment
+  author: DevOps Automation Collection
+  description: Pulls a versioned artifact from Nexus/Artifactory or S3, verifies its checksum, unpacks it into a versioned release directory, symlinks current, prunes old releases, and restarts the service.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - deploy
+    - artifact_registry
+    - application
+dependencies: []

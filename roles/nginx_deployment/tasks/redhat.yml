@@ -1,0 +1,33 @@
+---
+# roles/nginx_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure nginx official repo GPG key considerations are satisfied via distro package
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: ansible_facts['distribution'] in ['CentOS', 'Rocky', 'AlmaLinux']
+  register: nginx_epel_result
+  changed_when: nginx_epel_result.changed
+  tags: [deploy, nginx]
+
+- name: Open HTTP/HTTPS ports in firewalld
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - http
+    - https
+  when: ansible_facts.services['firewalld.service'] is defined
+  tags: [deploy, nginx]
+
+- name: Ensure SELinux allows nginx to act as reverse proxy (httpd_can_network_connect)
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+  when:
+    - ansible_facts['selinux']['status'] is defined
+    - ansible_facts['selinux']['status'] == 'enabled'
+    - nginx_vhosts | selectattr('proxy_pass', 'defined') | list | length > 0
+  tags: [deploy, nginx]

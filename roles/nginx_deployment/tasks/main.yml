@@ -1,0 +1,116 @@
+---
+# roles/nginx_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "nginx_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, nginx]
+
+- name: Include RedHat-specific repo/package setup
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, nginx]
+
+- name: Include Debian-specific repo/package setup
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, nginx]
+
+- name: Ensure nginx is installed
+  ansible.builtin.package:
+    name: "{{ nginx_package_name[ansible_facts['os_family']] }}"
+    state: "{{ nginx_package_state }}"
+  tags: [deploy, nginx]
+
+- name: Ensure vhost directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ nginx_vhost_dir[ansible_facts['os_family']] }}"
+    - "{{ nginx_vhost_enabled_dir[ansible_facts['os_family']] }}"
+  tags: [deploy, nginx]
+
+- name: Deploy main nginx.conf from template
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ nginx_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/nginx -t -c %s"
+  notify: Reload nginx
+  tags: [deploy, nginx]
+
+- name: Remove distro default vhost (avoid conflicting catch-all server block)
+  ansible.builtin.file:
+    path: "{{ nginx_default_vhost_file[ansible_facts['os_family']] }}"
+    state: absent
+  when: nginx_vhosts | length > 0
+  notify: Reload nginx
+  tags: [deploy, nginx]
+
+- name: Render one server-block file per site (sites-available / conf.d)
+  ansible.builtin.template:
+    src: vhost.conf.j2
+    dest: "{{ nginx_vhost_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ nginx_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload nginx
+  tags: [deploy, nginx]
+
+- name: Enable vhost via symlink (Debian sites-available -> sites-enabled)
+  ansible.builtin.file:
+    src: "{{ nginx_vhost_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    dest: "{{ nginx_vhost_enabled_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    state: link
+    force: true
+  loop: "{{ nginx_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - item.enabled | default(true) | bool
+  notify: Reload nginx
+  tags: [deploy, nginx]
+
+- name: Disable vhost by removing symlink (Debian, when enabled is false)
+  ansible.builtin.file:
+    path: "{{ nginx_vhost_enabled_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    state: absent
+  loop: "{{ nginx_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - not (item.enabled | default(true) | bool)
+  notify: Reload nginx
+  tags: [deploy, nginx]
+
+- name: Remove RedHat conf.d file when vhost is disabled (no symlink layer to unlink)
+  ansible.builtin.file:
+    path: "{{ nginx_vhost_dir[ansible_facts['os_family']] }}/{{ item.name }}.conf"
+    state: absent
+  loop: "{{ nginx_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not (item.enabled | default(true) | bool)
+  notify: Reload nginx
+  tags: [deploy, nginx]
+
+- name: Ensure nginx service is enabled and running
+  ansible.builtin.service:
+    name: "{{ nginx_service_name[ansible_facts['os_family']] }}"
+    state: "{{ nginx_service_state }}"
+    enabled: "{{ nginx_service_enabled | bool }}"
+  tags: [deploy, nginx]

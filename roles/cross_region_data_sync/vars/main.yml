@@ -1,0 +1,12 @@
+---
+# roles/cross_region_data_sync/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+cross_region_sync_package_name:
+  rsync:
+    RedHat: rsync
+    Debian: rsync
+  rclone:
+    RedHat: rclone
+    Debian: rclone

@@ -1,0 +1,15 @@
+{{ ansible_managed | comment }}
+# Managed by the password_policy_enforcement Ansible role — do not edit by hand.
+
+minlen = {{ password_min_length }}
+minclass = {{ password_min_class }}
+dcredit = {{ password_dcredit }}
+ucredit = {{ password_ucredit }}
+lcredit = {{ password_lcredit }}
+ocredit = {{ password_ocredit }}
+maxrepeat = {{ password_maxrepeat }}
+difok = {{ password_difok }}
+retry = {{ password_pwquality_retry }}
+{% if password_enforce_for_root %}
+enforce_for_root
+{% endif %}

@@ -1,0 +1,48 @@
+---
+# roles/dr_failover_orchestration/tasks/post_promote.yml
+# Runs AFTER database promotion has completed (either the replica_command
+# path in pre_promote.yml, or a full restore performed by a dedicated middle
+# play — see playbooks/disaster_recovery/42_dr_failover_orchestration.yml).
+- name: Deploy DR-site load-balancer configuration
+  ansible.builtin.template:
+    src: "{{ dr_lb_config_template }}"
+    dest: "{{ lb_config_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload load balancer
+  delegate_to: "{{ groups[dr_site_group][0] }}"
+  run_once: true
+  tags: [dr, failover]
+
+- name: Repoint DNS record to the DR site (via secrets-managed API token)
+  ansible.builtin.uri:
+    url: "https://dns-api.internal.example.com/v1/records/{{ dr_dns_record_name }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ dns_api_token }}"
+    body_format: json
+    body:
+      type: A
+      name: "{{ dr_dns_record_name }}"
+      value: "{{ dr_dns_target_ip }}"
+      ttl: "{{ dr_dns_ttl_seconds }}"
+    status_code: [200, 201]
+  when: dr_dns_repoint_enabled | bool
+  no_log: true
+  run_once: true
+  tags: [dr, failover]
+
+- name: Send failover completion notification
+  ansible.builtin.uri:
+    url: "{{ dr_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: >-
+        DR FAILOVER completed: traffic repointed to '{{ dr_site_group }}'
+        at {{ ansible_date_time.iso8601 }}. DB promotion method: {{ dr_promotion_method }}.
+    status_code: [200, 201, 204]
+  when: dr_notify_webhook_url | length > 0
+  run_once: true
+  tags: [dr, failover]

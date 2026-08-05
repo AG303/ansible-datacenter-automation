@@ -1,0 +1,16 @@
+---
+# roles/baseline_os_hardening/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+baseline_modprobe_conf_path:
+  RedHat: /etc/modprobe.d/baseline-hardening.conf
+  Debian: /etc/modprobe.d/baseline-hardening.conf
+
+baseline_sysctl_conf_path:
+  RedHat: /etc/sysctl.d/99-baseline-hardening.conf
+  Debian: /etc/sysctl.d/99-baseline-hardening.conf
+
+baseline_limits_conf_path:
+  RedHat: /etc/security/limits.d/99-baseline-hardening.conf
+  Debian: /etc/security/limits.d/99-baseline-hardening.conf

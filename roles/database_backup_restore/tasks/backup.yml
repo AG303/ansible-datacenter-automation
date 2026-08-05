@@ -1,0 +1,101 @@
+---
+# roles/database_backup_restore/tasks/backup.yml — dump + upload workflow
+- name: Dump MySQL database to timestamped file
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    mysqldump --host={{ db_host }} --port={{ db_port }} --user={{ db_admin_user }}
+    --password={{ db_admin_password }} --single-transaction --routines --triggers
+    {{ db_name }} | gzip -c > {{ db_dump_local_dir }}/{{ db_dump_filename }}
+  args:
+    executable: /bin/bash
+    creates: "{{ db_dump_local_dir }}/{{ db_dump_filename }}"
+  changed_when: true
+  no_log: true
+  when: db_engine == 'mysql'
+  tags: [dr, dbbackup]
+
+- name: Dump PostgreSQL database to timestamped file
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    PGPASSWORD={{ db_admin_password }} pg_dump --host={{ db_host }} --port={{ db_port }}
+    --username={{ db_admin_user }} --format=custom {{ db_name }} | gzip -c > {{ db_dump_local_dir }}/{{ db_dump_filename }}
+  args:
+    executable: /bin/bash
+    creates: "{{ db_dump_local_dir }}/{{ db_dump_filename }}"
+  changed_when: true
+  no_log: true
+  when: db_engine == 'postgresql'
+  tags: [dr, dbbackup]
+
+- name: Stat the freshly created dump file
+  ansible.builtin.stat:
+    path: "{{ db_dump_local_dir }}/{{ db_dump_filename }}"
+  register: db_dump_stat
+  tags: [dr, dbbackup]
+
+- name: Fail fast if the dump file is missing or empty
+  ansible.builtin.assert:
+    that:
+      - db_dump_stat.stat.exists
+      - db_dump_stat.stat.size > 0
+    fail_msg: "Database dump {{ db_dump_filename }} was not created or is empty — aborting upload"
+  tags: [dr, dbbackup]
+
+- name: Upload dump to S3 backup destination
+  amazon.aws.s3_object:
+    bucket: "{{ db_backup_s3_bucket }}"
+    object: "{{ db_backup_s3_prefix }}/{{ db_dump_filename }}"
+    src: "{{ db_dump_local_dir }}/{{ db_dump_filename }}"
+    mode: put
+    region: "{{ aws_region }}"
+  when: db_backup_destination_type == 's3'
+  tags: [dr, dbbackup]
+
+- name: Ensure NFS backup destination directory exists
+  ansible.builtin.file:
+    path: "{{ db_backup_nfs_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: db_backup_destination_type == 'nfs'
+  tags: [dr, dbbackup]
+
+- name: Copy dump to NFS backup destination
+  ansible.builtin.copy:
+    src: "{{ db_dump_local_dir }}/{{ db_dump_filename }}"
+    dest: "{{ db_backup_nfs_path }}/{{ db_dump_filename }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  when: db_backup_destination_type == 'nfs'
+  tags: [dr, dbbackup]
+
+- name: Purge local dumps older than retention window
+  ansible.builtin.find:
+    paths: "{{ db_dump_local_dir }}"
+    age: "{{ db_dump_retention_days }}d"
+    patterns: "{{ db_name }}-*.sql.gz"
+  register: db_old_dumps
+  tags: [dr, dbbackup]
+
+- name: Remove expired local dump files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ db_old_dumps.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  tags: [dr, dbbackup]
+
+- name: Notify backup completion
+  ansible.builtin.uri:
+    url: "{{ db_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "{{ db_engine }} backup of {{ db_name }} completed on {{ inventory_hostname }}: {{ db_dump_filename }}"
+    status_code: [200, 201, 204]
+  when: db_notify_webhook_url | length > 0
+  tags: [dr, dbbackup]

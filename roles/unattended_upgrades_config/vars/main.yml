@@ -1,0 +1,12 @@
+---
+# roles/unattended_upgrades_config/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+auto_patch_package_name:
+  RedHat: dnf-automatic
+  Debian: unattended-upgrades
+
+auto_patch_timer_name:
+  RedHat: "dnf-automatic-{{ 'install' if dnf_automatic_upgrade_type == 'default' else 'install' }}.timer"
+  Debian: "apt-daily-upgrade.timer"

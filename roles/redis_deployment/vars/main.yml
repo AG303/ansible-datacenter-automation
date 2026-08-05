@@ -1,0 +1,24 @@
+---
+# roles/redis_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+redis_package_name:
+  RedHat: redis
+  Debian: redis-server
+
+redis_service_name:
+  RedHat: redis
+  Debian: redis-server
+
+redis_sentinel_service_name:
+  RedHat: sentinel
+  Debian: redis-sentinel
+
+redis_conf_path:
+  RedHat: /etc/redis/redis.conf
+  Debian: /etc/redis/redis.conf
+
+redis_sentinel_conf_path:
+  RedHat: /etc/redis/sentinel.conf
+  Debian: /etc/redis/sentinel.conf

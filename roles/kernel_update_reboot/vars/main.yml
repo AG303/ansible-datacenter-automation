@@ -1,0 +1,18 @@
+---
+# roles/kernel_update_reboot/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+kernel_package_name:
+  RedHat: kernel
+  Debian: linux-image-generic
+
+kernel_running_version_command:
+  RedHat: "uname -r"
+  Debian: "uname -r"
+
+# Command used to determine the version of the kernel that would be booted
+# next (i.e. the newest kernel package actually installed on disk).
+kernel_latest_installed_command:
+  RedHat: "rpm -q --last kernel | head -n1 | awk '{print $1}' | sed 's/^kernel-//'"
+  Debian: "dpkg-query -W -f='${Package} ${Version}\\n' 'linux-image-*' | grep -v generic-hwe | sort -V | tail -n1 | awk '{print $2}'"

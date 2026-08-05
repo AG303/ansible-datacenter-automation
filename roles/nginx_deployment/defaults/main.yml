@@ -1,0 +1,67 @@
+---
+# roles/nginx_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Package / service control --------------------------------------------
+nginx_package_state: present
+nginx_service_enabled: true
+nginx_service_state: started
+
+# --- Global nginx.conf tuning ----------------------------------------------
+nginx_worker_processes: "auto"
+nginx_worker_connections: 1024
+nginx_worker_rlimit_nofile: 65535
+nginx_keepalive_timeout: 65
+nginx_client_max_body_size: "10m"
+nginx_gzip_enabled: true
+nginx_server_tokens_off: true          # hide nginx version in Server header
+nginx_default_error_log_level: warn
+
+# --- Site management ---------------------------------------------------------
+# Each entry in nginx_vhosts becomes one server-block file rendered from the
+# vhost.j2 template and dropped under sites-available/ (Debian) or conf.d/
+# (RedHat), then symlinked into sites-enabled/ on Debian (RedHat serves
+# directly from conf.d/ so no enable symlink step is required there).
+#
+# Example:
+# nginx_vhosts:
+#   - name: app.example.com
+#     server_name: "app.example.com"
+#     listen_port: 80
+#     root: /var/www/app
+#     enabled: true
+#     tls_enabled: false
+#     tls_cert_path: ""                # populated from certificate_management role output when tls_enabled
+#     tls_key_path: ""
+#     proxy_pass: "http://127.0.0.1:3000"   # optional; if set, generates a reverse-proxy block instead of static root
+#     extra_locations: []               # optional list of {path, config} raw location overrides
+nginx_vhosts: []
+
+# --- TLS defaults (only used when a vhost sets tls_enabled: true) -----------
+# By convention, certificates are provisioned by the certificate_management
+# role, which writes issued cert/key pairs under this directory tree. Point
+# each vhost's tls_cert_path / tls_key_path at the files that role produced.
+nginx_certificate_management_output_dir: /etc/pki/nginx/certs
+nginx_tls_protocols: "TLSv1.2 TLSv1.3"
+nginx_tls_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+
+# --- Log paths ----------------------------------------------------------------
+nginx_access_log: /var/log/nginx/access.log
+nginx_error_log: /var/log/nginx/error.log
+
+# --- Secrets manager integration -------------------------------------------
+# Not used directly by this role today (nginx itself holds no credentials),
+# but exposed for consistency with other roles and for sites that template
+# HTTP basic-auth files or upstream API keys into vhost extra_locations.
+# Both external secrets-manager lookup patterns are illustrated for reference
+# and are opt-in only.
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/nginx/{{ inventory_hostname }}"
+# HashiCorp Vault example:
+#   nginx_basic_auth_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                    engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+# AWS Secrets Manager example:
+#   nginx_basic_auth_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

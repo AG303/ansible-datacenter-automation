@@ -1,0 +1,78 @@
+---
+# roles/ssh_hardening/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "ssh_hardening supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, ssh]
+
+- name: Ensure openssh-server package is installed
+  ansible.builtin.package:
+    name: "{{ ssh_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, ssh]
+
+- name: Backup existing sshd_config before modification
+  ansible.builtin.copy:
+    src: "{{ ssh_config_path[ansible_facts['os_family']] }}"
+    dest: "{{ ssh_config_path[ansible_facts['os_family']] }}.bak-{{ ansible_date_time.iso8601_basic_short }}"
+    remote_src: true
+    mode: "0600"
+  when: ssh_backup_existing_config | bool
+  changed_when: false
+  tags: [security, ssh]
+
+- name: Deploy hardened sshd_config from template
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: "{{ ssh_config_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "{{ '/usr/sbin/sshd -t -f %s' if ssh_validate_config_before_reload else omit }}"
+  notify: Reload sshd
+  tags: [security, ssh]
+
+- name: Deploy pre-login legal banner
+  ansible.builtin.copy:
+    content: "{{ ssh_banner_text }}\n"
+    dest: "{{ ssh_banner_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ssh_banner_enabled | bool
+  tags: [security, ssh]
+
+- name: Include RedHat-specific tasks (firewalld port exception)
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [security, ssh]
+
+- name: Include Debian-specific tasks (ufw port exception)
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [security, ssh]
+
+- name: Ensure sshd service is enabled and running
+  ansible.builtin.service:
+    name: "{{ ssh_service_name[ansible_facts['os_family']] }}"
+    state: started
+    enabled: true
+  tags: [security, ssh]
+
+# --- Example: pulling a centrally-managed host key from an external secrets
+# manager instead of relying on the locally auto-generated key (disabled by
+# default via ssh_hostkey_from_vault_enabled). Uncomment/adapt as needed.
+# - name: Retrieve managed SSH host private key from HashiCorp Vault
+#   ansible.builtin.copy:
+#     content: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                  engine_mount_point=vault_kv_mount, url=vault_addr).secret.private_key }}"
+#     dest: /etc/ssh/ssh_host_ed25519_key
+#     owner: root
+#     group: root
+#     mode: "0600"
+#   no_log: true
+#   when: ssh_hostkey_from_vault_enabled | bool
+#   notify: Reload sshd
+#   tags: [security, ssh]

@@ -1,0 +1,25 @@
+---
+# roles/ntp_time_sync/tasks/redhat.yml — chrony (only supported provider on RedHat family)
+- name: Ensure chrony package is installed
+  ansible.builtin.package:
+    name: "{{ chrony_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, ntp]
+
+- name: Deploy chrony.conf from template
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: "{{ chrony_conf_path[ansible_facts['os_family']] }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart chronyd
+  tags: [security, ntp]
+
+- name: Ensure chronyd service is enabled and running
+  ansible.builtin.service:
+    name: "{{ chrony_service_name[ansible_facts['os_family']] }}"
+    state: "{{ ntp_service_state }}"
+    enabled: "{{ ntp_service_enabled | bool }}"
+  tags: [security, ntp]

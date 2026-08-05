@@ -1,0 +1,61 @@
+---
+# roles/firewall_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Default posture -------------------------------------------------------
+firewall_default_zone: public            # firewalld zone used on RedHat hosts
+firewall_default_incoming_policy: deny    # ufw default incoming policy on Debian hosts
+firewall_default_outgoing_policy: allow   # ufw default outgoing policy on Debian hosts
+firewall_logging: "on"                    # firewalld log-denied / ufw logging level ("on"|"off"|"low"|"medium"|"high"|"full")
+
+# --- Allow-list of ports/services ------------------------------------------
+# Every managed host is default-deny inbound. Add entries here to punch
+# explicit, auditable holes. `service` takes precedence over `port` when both
+# are given for firewalld; ufw entries always use port/proto.
+# Example:
+# firewall_allowed_rules:
+#   - name: "SSH management access"
+#     port: 22
+#     proto: tcp
+#     source: "10.0.0.0/8"          # optional; omit/empty = any source
+#   - name: "HTTPS"
+#     service: https                # firewalld service name (ignored by ufw, which falls back to port 443)
+#     port: 443
+#     proto: tcp
+firewall_allowed_rules: []
+
+# --- Zone/interface management (firewalld only) -----------------------------
+firewall_zone_interfaces: []
+# Example:
+# firewall_zone_interfaces:
+#   - zone: internal
+#     interface: eth1
+
+# --- Package/service enable ------------------------------------------------
+firewall_manage_package: true
+firewall_service_enabled: true
+firewall_service_state: started
+
+# --- Idempotent sync behavior ------------------------------------------------
+# When true, any firewalld rich-rules/ports or ufw rules NOT present in
+# firewall_allowed_rules and previously applied by this role are removed on
+# the next run (tracked via a marker comment). When false, this role only
+# adds rules and never removes ones it does not recognize.
+firewall_prune_unmanaged_rules: false
+
+# --- Secrets manager integration -------------------------------------------
+# Not typically required for firewall rule management, but provided for
+# environments where allow-list source CIDRs are fetched from a central
+# secrets/config store rather than committed to group_vars in plaintext.
+# Both lookup patterns are illustrated for reference and disabled by default.
+firewall_source_cidrs_from_vault_enabled: false
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/firewall/trusted_cidrs"
+# HashiCorp Vault example:
+#   firewall_trusted_cidrs: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                engine_mount_point=vault_kv_mount, url=vault_addr).secret.cidrs }}"
+# AWS Secrets Manager example:
+#   firewall_trusted_cidrs: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

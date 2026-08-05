@@ -1,0 +1,10 @@
+---
+# roles/third_party_repo_hardening/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+epel_release_package_url:
+  "8": "https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm"
+  "9": "https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm"
+
+third_party_keyring_dir: /etc/apt/keyrings

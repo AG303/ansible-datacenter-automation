@@ -1,0 +1,30 @@
+---
+# roles/security_only_patching/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Rollout safety ------------------------------------------------------------
+rolling_batch_size: "30%"
+# max_fail_percentage is intentionally NOT redeclared here as a role default:
+# it is a reserved Ansible play keyword, not a normal role variable. Set it
+# on the wrapper play itself (see playbooks/patch_management/18_security_only_patching.yml).
+
+# --- RedHat family --------------------------------------------------------------
+security_patch_update_cache: true
+security_patch_bugfix_also: false     # RedHat only: also include bugfix-classified errata alongside security
+
+# --- Debian family ----------------------------------------------------------------
+# Debian/Ubuntu classify security updates by APT "pocket"/origin rather than a
+# yum/dnf advisory flag. The default allowlist below matches the standard
+# security pocket naming used by Debian and Ubuntu archives.
+security_patch_debian_allowed_origins:
+  - "{{ ansible_facts['distribution'] | default('Ubuntu') }}:{{ ansible_facts['distribution_release'] | default('jammy') }}-security"
+  - "Debian-Security:{{ ansible_facts['distribution_release'] | default('bookworm') }}-security"
+security_patch_debian_dry_run_first: true   # run unattended-upgrades --dry-run and log output before applying for real
+
+# --- Health checks (mirrors os_patch_rolling_update pattern) ----------------------
+security_patch_pre_check_enabled: true
+security_patch_post_check_enabled: true
+security_patch_health_check_service: "sshd"
+security_patch_wait_for_connection_timeout: 180
+security_patch_wait_for_connection_delay: 5

@@ -1,0 +1,10 @@
+---
+# roles/user_account_management/handlers/main.yml
+# This role does not manage any long-running service; account changes take
+# effect immediately via the ansible.builtin.user module. No handlers required
+# beyond a placeholder for future NSS cache refresh needs (e.g. sssd/nscd).
+- name: Restart nscd if present
+  ansible.builtin.service:
+    name: nscd
+    state: restarted
+  when: ansible_facts.services['nscd.service'] is defined

@@ -1,0 +1,121 @@
+---
+# roles/mysql_database_deployment/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "mysql_database_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, mysql]
+
+- name: Assert supported mysql_flavor
+  ansible.builtin.assert:
+    that:
+      - mysql_flavor in ['mariadb', 'mysql']
+    fail_msg: "mysql_flavor must be 'mariadb' or 'mysql' (found {{ mysql_flavor }})"
+  tags: [deploy, mysql]
+
+- name: Install python client library required by community.mysql modules
+  ansible.builtin.package:
+    name: "{{ 'python3-PyMySQL' if ansible_facts['os_family'] == 'RedHat' else 'python3-pymysql' }}"
+    state: present
+  tags: [deploy, mysql]
+
+- name: Install MySQL/MariaDB server package
+  ansible.builtin.package:
+    name: "{{ mysql_packages[ansible_facts['os_family']][mysql_flavor] }}"
+    state: "{{ mysql_package_state }}"
+  tags: [deploy, mysql]
+
+- name: Include RedHat-specific tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [deploy, mysql]
+
+- name: Include Debian-specific tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [deploy, mysql]
+
+- name: Ensure database is started before initial configuration
+  ansible.builtin.service:
+    name: "{{ mysql_service_name[ansible_facts['os_family']][mysql_flavor] }}"
+    state: started
+    enabled: true
+  tags: [deploy, mysql]
+
+- name: Template my.cnf server tuning overrides
+  ansible.builtin.template:
+    src: my.cnf.j2
+    dest: "{{ mysql_config_path[ansible_facts['os_family']][mysql_flavor] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mysql
+  tags: [deploy, mysql]
+
+# --- Root password bootstrap: only sets it if root can still authenticate
+# without a password (i.e. this is a fresh install) — never overwrites a
+# password that's already been rotated out-of-band.
+- name: Set MySQL/MariaDB root password on first initialization (idempotent)
+  ansible.mysql.mysql_user:
+    name: root
+    password: "{{ mysql_root_password }}"
+    host_all: true
+    login_unix_socket: "{{ mysql_socket_path }}"
+    check_implicit_admin: true
+  no_log: true
+  tags: [deploy, mysql]
+
+- name: Remove anonymous MySQL/MariaDB users
+  ansible.mysql.mysql_user:
+    name: ""
+    host_all: true
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  no_log: true
+  tags: [deploy, mysql]
+
+- name: Create application databases
+  ansible.mysql.mysql_db:
+    name: "{{ item.name }}"
+    encoding: "{{ item.encoding | default(mysql_character_set_server) }}"
+    collation: "{{ item.collation | default(mysql_collation_server) }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ mysql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [deploy, mysql]
+
+- name: Create application database users with least-privilege grants
+  ansible.mysql.mysql_user:
+    name: "{{ item.name }}"
+    host: "{{ item.host | default('localhost') }}"
+    password: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+           engine_mount_point=vault_kv_mount, url=vault_addr).secret[item.password_secret_field])
+         if mysql_secrets_backend == 'hashi_vault'
+         else (lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) | from_json)[item.password_secret_field] }}
+    priv: "{{ item.priv }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop: "{{ mysql_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  tags: [deploy, mysql]
+
+- name: Include replication configuration (guarded, optional)
+  ansible.builtin.include_tasks: replication.yml
+  when: mysql_replication_enabled | bool
+  tags: [deploy, mysql]
+
+- name: Ensure database service is enabled and running
+  ansible.builtin.service:
+    name: "{{ mysql_service_name[ansible_facts['os_family']][mysql_flavor] }}"
+    state: "{{ mysql_service_state }}"
+    enabled: "{{ mysql_service_enabled | bool }}"
+  tags: [deploy, mysql]

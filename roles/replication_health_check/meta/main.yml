@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: replication_health_check
+  author: DevOps Automation Collection
+  description: Checks database replication lag (MySQL/PostgreSQL) and filesystem/storage replication mirror freshness, alerting if lag exceeds configured thresholds.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - replication
+dependencies: []

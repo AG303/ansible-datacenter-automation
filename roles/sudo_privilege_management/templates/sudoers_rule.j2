@@ -1,0 +1,6 @@
+{{ ansible_managed | comment }}
+# Managed by the sudo_privilege_management Ansible role — do not edit by hand.
+# Rule: {{ rule_item.name }}
+
+{% set principal_prefix = '%' if rule_item.principal_type == 'group' else '' %}
+{{ principal_prefix }}{{ rule_item.principal }} {{ rule_item.hosts | default('ALL') }}=({{ rule_item.runas | default('ALL') }}) {% if rule_item.nopasswd | default(false) %}NOPASSWD: {% endif %}{{ rule_item.commands | join(', ') }}

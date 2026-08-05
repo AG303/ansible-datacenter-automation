@@ -1,0 +1,17 @@
+---
+# roles/security_only_patching/tasks/redhat.yml — apply security errata only
+- name: Refresh dnf metadata cache
+  ansible.builtin.dnf:
+    update_cache: true
+  when: security_patch_update_cache | bool
+  tags: [patch, security_only_patching]
+
+- name: Apply security-classified updates only (dnf --security)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    security: true
+    bugfix: "{{ security_patch_bugfix_also | bool }}"
+    update_cache: false
+  register: security_patch_redhat_result
+  tags: [patch, security_only_patching]

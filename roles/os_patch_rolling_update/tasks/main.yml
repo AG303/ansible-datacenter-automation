@@ -1,0 +1,100 @@
+---
+# roles/os_patch_rolling_update/tasks/main.yml
+# Full OS package upgrade with pre/post health checks. Fleet-wide rollout
+# safety (serial batching, max_fail_percentage circuit breaker) is applied at
+# the PLAY level in the wrapper playbook — Ansible does not support serial
+# inside a role definition itself.
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "os_patch_rolling_update supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [patch, os_patch_rolling_update]
+
+- name: Pre-update health check — verify target service is active
+  ansible.builtin.systemd:
+    name: "{{ os_patch_health_check_service }}"
+  register: os_patch_pre_service_status
+  when:
+    - os_patch_pre_check_enabled | bool
+    - os_patch_health_check_type == 'service'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Pre-update health check — verify HTTP endpoint is healthy
+  ansible.builtin.uri:
+    url: "{{ os_patch_health_check_url }}"
+    status_code: 200
+    timeout: "{{ os_patch_health_check_timeout }}"
+  when:
+    - os_patch_pre_check_enabled | bool
+    - os_patch_health_check_type == 'http'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Fail fast if pre-update service health check is not active
+  ansible.builtin.assert:
+    that:
+      - os_patch_pre_service_status.status.ActiveState == 'active'
+    fail_msg: >-
+      Pre-update health check failed for {{ os_patch_health_check_service }} on {{ inventory_hostname }};
+      refusing to patch a host that is already unhealthy.
+  when:
+    - os_patch_pre_check_enabled | bool
+    - os_patch_health_check_type == 'service'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Include RedHat-family upgrade tasks
+  ansible.builtin.include_tasks: redhat.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Include Debian-family upgrade tasks
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Wait for host connectivity to recover after upgrade
+  ansible.builtin.wait_for_connection:
+    timeout: "{{ os_patch_wait_for_connection_timeout }}"
+    delay: "{{ os_patch_wait_for_connection_delay }}"
+  tags: [patch, os_patch_rolling_update]
+
+- name: Post-update health check — verify target service is active
+  ansible.builtin.systemd:
+    name: "{{ os_patch_health_check_service }}"
+  register: os_patch_post_service_status
+  when:
+    - os_patch_post_check_enabled | bool
+    - os_patch_health_check_type == 'service'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Post-update health check — verify HTTP endpoint is healthy
+  ansible.builtin.uri:
+    url: "{{ os_patch_health_check_url }}"
+    status_code: 200
+    timeout: "{{ os_patch_health_check_timeout }}"
+  register: os_patch_post_http_status
+  when:
+    - os_patch_post_check_enabled | bool
+    - os_patch_health_check_type == 'http'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Fail this host if post-update health check did not pass
+  ansible.builtin.assert:
+    that:
+      - os_patch_post_service_status.status.ActiveState == 'active'
+    fail_msg: >-
+      Post-update health check FAILED for {{ os_patch_health_check_service }} on {{ inventory_hostname }}.
+      This host will count toward max_fail_percentage and may halt the rollout.
+  when:
+    - os_patch_post_check_enabled | bool
+    - os_patch_health_check_type == 'service'
+  tags: [patch, os_patch_rolling_update]
+
+- name: Operator approval gate before proceeding to next batch
+  ansible.builtin.pause:
+    prompt: "{{ os_patch_pause_prompt }}"
+  when: os_patch_pause_between_batches | bool
+  delegate_to: localhost
+  become: false
+  run_once: true
+  tags: [patch, os_patch_rolling_update]

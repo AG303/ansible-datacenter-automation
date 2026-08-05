@@ -1,0 +1,25 @@
+---
+# roles/haproxy_load_balancer/tasks/debian.yml — Debian-family specific adjustments
+- name: Enable haproxy startup in default.cfg (ENABLED=1 legacy sysvinit compatibility flag)
+  ansible.builtin.lineinfile:
+    path: /etc/default/haproxy
+    regexp: '^ENABLED='
+    line: "ENABLED=1"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [deploy, haproxy]
+
+- name: Open frontend and stats ports in ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: >-
+    {{ (haproxy_backends | map(attribute='frontend_bind') | map('regex_replace', '^.*:', '') | list)
+       + ([haproxy_stats_port | string] if haproxy_stats_enabled else []) }}
+  loop_control:
+    label: "{{ item }}/tcp"
+  when: ansible_facts.services['ufw.service'] is defined
+  tags: [deploy, haproxy]

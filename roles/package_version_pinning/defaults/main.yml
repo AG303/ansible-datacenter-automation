@@ -1,0 +1,16 @@
+---
+# roles/package_version_pinning/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Pinned packages -----------------------------------------------------------
+# List of dicts: name (required), version (optional — if omitted, the
+# currently-installed version is locked as-is).
+pinned_packages:
+  - name: kernel
+    version: ""          # blank = lock at whatever is currently installed
+  - name: docker-ce
+    version: "5:24.0.9-1"
+
+# --- Behaviour ------------------------------------------------------------------
+package_version_pinning_state: "present"   # "present" to apply pins, "absent" to clear all pins/holds managed by this role

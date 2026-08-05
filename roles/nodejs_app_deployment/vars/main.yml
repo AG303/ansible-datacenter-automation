@@ -1,0 +1,20 @@
+---
+# roles/nodejs_app_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+nodejs_nodesource_setup_script_url: "https://deb.nodesource.com/setup_{{ nodejs_major_version }}.x"
+nodejs_nodesource_rpm_setup_script_url: "https://rpm.nodesource.com/setup_{{ nodejs_major_version }}.x"
+
+nodejs_package_name:
+  RedHat: nodejs
+  Debian: nodejs
+
+nodejs_build_dependencies:
+  RedHat:
+    - gcc-c++
+    - make
+    - git
+  Debian:
+    - build-essential
+    - git

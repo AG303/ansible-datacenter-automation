@@ -1,0 +1,47 @@
+{{ ansible_managed | comment(decoration='# ') }}
+# Managed by the haproxy_load_balancer Ansible role — do not edit by hand.
+
+global
+    log /dev/log {{ haproxy_log_facility }}
+    chroot /var/lib/haproxy
+    stats socket {{ haproxy_stats_socket_path }} mode 660 level admin
+    user haproxy
+    group haproxy
+    daemon
+    maxconn {{ haproxy_maxconn }}
+
+defaults
+    mode {{ haproxy_mode }}
+    log global
+    option httplog
+    option dontlognull
+    timeout connect {{ haproxy_timeout_connect }}
+    timeout client {{ haproxy_timeout_client }}
+    timeout server {{ haproxy_timeout_server }}
+    retries 3
+
+{% if haproxy_stats_enabled %}
+listen stats
+    bind {{ haproxy_stats_bind_address }}:{{ haproxy_stats_port }}
+    stats enable
+    stats uri {{ haproxy_stats_uri }}
+    stats auth {{ haproxy_stats_user }}:{{ haproxy_stats_password }}
+    stats refresh 10s
+{% endif %}
+
+{% for backend in haproxy_backends %}
+frontend {{ backend.name }}_frontend
+    bind {{ backend.frontend_bind }}
+    default_backend {{ backend.name }}
+
+backend {{ backend.name }}
+    balance {{ backend.balance_algorithm | default('roundrobin') }}
+{% if backend.health_check_path is defined %}
+    option httpchk GET {{ backend.health_check_path }}
+    http-check expect status 200
+{% endif %}
+{% for host in groups[backend.backend_group] | default([]) %}
+    server {{ host }} {{ hostvars[host]['ansible_default_ipv4']['address'] }}:{{ backend.backend_port }} check
+{% endfor %}
+
+{% endfor %}

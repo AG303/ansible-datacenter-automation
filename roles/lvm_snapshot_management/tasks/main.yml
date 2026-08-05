@@ -1,0 +1,36 @@
+---
+# roles/lvm_snapshot_management/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "lvm_snapshot_management supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, lvm]
+
+- name: Assert snapshot_action is valid
+  ansible.builtin.assert:
+    that:
+      - snapshot_action in ['create', 'remove', 'revert']
+    fail_msg: "snapshot_action must be create, remove, or revert (found {{ snapshot_action }})"
+  tags: [dr, lvm]
+
+- name: Ensure lvm2 package is installed
+  ansible.builtin.package:
+    name: "{{ lvm_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, lvm]
+
+- name: Include snapshot create workflow
+  ansible.builtin.include_tasks: create.yml
+  when: snapshot_action == 'create'
+  tags: [dr, lvm]
+
+- name: Include snapshot remove workflow
+  ansible.builtin.include_tasks: remove.yml
+  when: snapshot_action == 'remove'
+  tags: [dr, lvm]
+
+- name: Include snapshot revert workflow
+  ansible.builtin.include_tasks: revert.yml
+  when: snapshot_action == 'revert'
+  tags: [dr, lvm]

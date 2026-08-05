@@ -1,0 +1,7 @@
+---
+# roles/security_only_patching/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+security_patch_unattended_package:
+  Debian: unattended-upgrades

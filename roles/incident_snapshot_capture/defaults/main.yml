@@ -1,0 +1,41 @@
+---
+# roles/incident_snapshot_capture/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+# This role is read-only diagnostics — it never mutates system or service state.
+
+# --- Capture scope -----------------------------------------------------------------
+incident_capture_top_processes: true
+incident_capture_disk_memory: true
+incident_capture_journal_lines: true
+incident_capture_network_connections: true
+incident_capture_service_statuses: true
+incident_capture_top_process_count: 25
+incident_capture_journal_line_count: 500
+incident_capture_journal_since: "1 hour ago"
+incident_capture_services_of_interest:
+  - sshd
+  - haproxy
+  - nginx
+  - httpd
+  - postgresql
+  - mysqld
+  - docker
+  - etcd
+
+# --- Archive output ------------------------------------------------------------------
+incident_capture_local_dir: /var/tmp/incident-snapshot-capture
+incident_capture_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+incident_capture_archive_name: "incident-{{ inventory_hostname }}-{{ incident_capture_timestamp }}.tar.gz"
+
+# --- Upload to backup destination (optional) -------------------------------------------
+incident_capture_upload_enabled: true
+incident_capture_backup_destination_type: s3   # s3 | nfs
+incident_capture_s3_bucket: "dc-incident-diagnostics"
+incident_capture_s3_prefix: "incidents/{{ inventory_hostname }}"
+incident_capture_nfs_path: "/mnt/dr-backups/incidents/{{ inventory_hostname }}"
+aws_region: "us-east-1"
+
+# --- Cleanup -----------------------------------------------------------------------------
+incident_capture_retain_local_archive: true
+incident_capture_local_retention_days: 30

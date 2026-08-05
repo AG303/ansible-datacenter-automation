@@ -1,0 +1,66 @@
+---
+# roles/selinux_apparmor_management/tasks/redhat.yml — SELinux management
+- name: Ensure SELinux management tools are installed
+  ansible.builtin.package:
+    name: "{{ mac_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, mac]
+
+- name: Refuse to disable SELinux without explicit acknowledgement
+  ansible.builtin.assert:
+    that:
+      - selinux_state != 'disabled' or selinux_disable_acknowledged | bool
+    fail_msg: >-
+      selinux_state is 'disabled' but selinux_disable_acknowledged is false.
+      Set selinux_disable_acknowledged: true to confirm this intentional,
+      high-impact change (requires a reboot to fully take effect).
+  when: selinux_disable_requires_ack | bool
+  tags: [security, mac]
+
+- name: Set SELinux mode and policy
+  ansible.posix.selinux:
+    state: "{{ selinux_state }}"
+    policy: "{{ selinux_policy }}"
+  register: _selinux_result
+  tags: [security, mac]
+
+- name: Notify that a reboot is required for SELinux disable/enable transitions
+  ansible.builtin.debug:
+    msg: >-
+      SELinux state change to '{{ selinux_state }}' requires a reboot to fully
+      take effect (reboot_required={{ _selinux_result.reboot_required | default(false) }}).
+  when: _selinux_result.reboot_required | default(false) | bool
+  tags: [security, mac]
+
+- name: Set SELinux booleans
+  community.general.seboolean:
+    name: "{{ item.name }}"
+    state: "{{ item.state }}"
+    persistent: true
+  loop: "{{ selinux_booleans }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [security, mac]
+
+- name: Apply custom SELinux file contexts
+  community.general.sefcontext:
+    target: "{{ item.target }}"
+    setype: "{{ item.setype }}"
+    state: present
+  loop: "{{ selinux_file_contexts }}"
+  loop_control:
+    label: "{{ item.target }}"
+  register: _sefcontext_result
+  tags: [security, mac]
+
+- name: Apply new file contexts with restorecon
+  ansible.builtin.command:
+    cmd: "restorecon -Rv {{ item.item.target.split('(')[0] }}"
+  loop: "{{ _sefcontext_result.results }}"
+  loop_control:
+    label: "{{ item.item.target }}"
+  when:
+    - selinux_restorecon_after_fcontext | bool
+    - item.changed
+  changed_when: true
+  tags: [security, mac]

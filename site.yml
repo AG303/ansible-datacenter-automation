@@ -1,0 +1,8 @@
+---
+# Master entry point. Not intended to be run wholesale in one go against
+# production — use --tags/--limit or invoke the category-level site-*.yml
+# files individually. Kept here for discoverability and CI syntax-checking.
+- ansible.builtin.import_playbook: playbooks/site-security-compliance.yml
+- ansible.builtin.import_playbook: playbooks/site-patch-management.yml
+- ansible.builtin.import_playbook: playbooks/site-app-deployment.yml
+- ansible.builtin.import_playbook: playbooks/site-disaster-recovery.yml

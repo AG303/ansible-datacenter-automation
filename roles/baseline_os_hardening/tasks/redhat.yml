@@ -1,0 +1,6 @@
+---
+# roles/baseline_os_hardening/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure GRUB audit=1 is not required here (placeholder for symmetry — handled by auditd_configuration role)
+  ansible.builtin.debug:
+    msg: "Kernel audit boot parameter management is handled by the auditd_configuration role, not baseline_os_hardening."
+  tags: [security, baseline]

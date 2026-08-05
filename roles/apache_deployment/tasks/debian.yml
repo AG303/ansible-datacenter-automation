@@ -1,0 +1,33 @@
+---
+# roles/apache_deployment/tasks/debian.yml — Debian-family specific adjustments
+# Debian/Ubuntu apache2 requires explicit module + site enablement. We use
+# community.general.apache2_module for modules and an a2ensite command wrapper
+# for sites (there is no dedicated Ansible module for a2ensite).
+
+- name: Enable required apache2 modules
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ apache_debian_modules_enabled }}"
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Disable the distro default site (a2dissite equivalent)
+  ansible.builtin.command: a2dissite 000-default.conf
+  args:
+    removes: /etc/apache2/sites-enabled/000-default.conf
+  when: apache_vhosts | length > 0
+  changed_when: true
+  notify: Reload apache
+  tags: [deploy, apache]
+
+- name: Open HTTP/HTTPS ports in ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "80"
+    - "443"
+  when: ansible_facts.services['ufw.service'] is defined
+  tags: [deploy, apache]

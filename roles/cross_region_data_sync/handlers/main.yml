@@ -1,0 +1,8 @@
+---
+# roles/cross_region_data_sync/handlers/main.yml
+# No persistent service is managed by this role; retained for convention
+# consistency.
+- name: Noop cross-region sync handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for cross_region_data_sync"
+  listen: "Archive sync report"

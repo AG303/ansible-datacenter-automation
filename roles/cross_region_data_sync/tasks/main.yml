@@ -1,0 +1,69 @@
+---
+# roles/cross_region_data_sync/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "cross_region_data_sync supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [dr, crossregionsync]
+
+- name: Assert cross_region_sync_tool is valid
+  ansible.builtin.assert:
+    that:
+      - cross_region_sync_tool in ['rsync', 'rclone']
+    fail_msg: "cross_region_sync_tool must be rsync or rclone (found {{ cross_region_sync_tool }})"
+  tags: [dr, crossregionsync]
+
+- name: Assert the DR destination inventory group exists and is non-empty
+  ansible.builtin.assert:
+    that:
+      - cross_region_dest_host_group in groups
+      - groups[cross_region_dest_host_group] | length > 0
+    fail_msg: "cross_region_dest_host_group '{{ cross_region_dest_host_group }}' must exist in inventory and contain at least one host"
+  tags: [dr, crossregionsync]
+
+- name: Install the selected sync tool
+  ansible.builtin.package:
+    name: "{{ cross_region_sync_package_name[cross_region_sync_tool][ansible_facts['os_family']] }}"
+    state: present
+  tags: [dr, crossregionsync]
+
+- name: Resolve cross-region sync SSH key from HashiCorp Vault
+  ansible.builtin.set_fact:
+    cross_region_ssh_private_key: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+                                       engine_mount_point=vault_kv_mount, url=vault_addr).secret.private_key }}"
+  no_log: true
+  when:
+    - cross_region_sync_tool == 'rsync'
+    - cross_region_credential_source == 'vault'
+  tags: [dr, crossregionsync]
+
+- name: Resolve cross-region sync SSH key from AWS Secrets Manager
+  ansible.builtin.set_fact:
+    cross_region_ssh_private_key: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+  no_log: true
+  when:
+    - cross_region_sync_tool == 'rsync'
+    - cross_region_credential_source == 'aws_secrets_manager'
+  tags: [dr, crossregionsync]
+
+- name: Install SSH private key used for rsync-over-SSH transport
+  ansible.builtin.copy:
+    content: "{{ cross_region_ssh_private_key }}\n"
+    dest: "{{ cross_region_ssh_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: cross_region_sync_tool == 'rsync'
+  tags: [dr, crossregionsync]
+
+- name: Include rsync-based cross-region sync workflow
+  ansible.builtin.include_tasks: sync_rsync.yml
+  when: cross_region_sync_tool == 'rsync'
+  tags: [dr, crossregionsync]
+
+- name: Include rclone-based cross-region sync workflow
+  ansible.builtin.include_tasks: sync_rclone.yml
+  when: cross_region_sync_tool == 'rclone'
+  tags: [dr, crossregionsync]

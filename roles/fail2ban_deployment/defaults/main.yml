@@ -1,0 +1,56 @@
+---
+# roles/fail2ban_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Global jail defaults (jail.local [DEFAULT] section) --------------------
+fail2ban_bantime: 1h            # e.g. "10m", "1h", "1d" (fail2ban time-unit syntax)
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+fail2ban_bantime_increment: true    # progressively longer bans for repeat offenders
+fail2ban_bantime_factor: 2
+fail2ban_bantime_maxtime: 1w
+fail2ban_backend: auto             # auto|systemd|pyinotify|polling
+fail2ban_destemail: "security-alerts@example.com"
+fail2ban_sender: "fail2ban@{{ ansible_facts['fqdn'] | default(ansible_facts['hostname']) }}"
+fail2ban_action: "%(action_)s"     # ban only by default; use "%(action_mwl)s" to also mail whois+log
+
+# --- Trusted CIDR whitelist (never banned) ----------------------------------
+fail2ban_ignoreip:
+  - 127.0.0.1/8
+  - ::1
+# Append internal management ranges per-environment, e.g. "10.0.0.0/8"
+
+# --- Jails --------------------------------------------------------------
+# Each entry becomes its own jail in /etc/fail2ban/jail.local. `enabled: true`
+# activates the jail. sshd is included and enabled by default; nginx/apache
+# jails are provided but disabled unless those services are actually present.
+fail2ban_jails:
+  - name: sshd
+    enabled: true
+    port: ssh
+    filter: sshd
+    logpath: "{{ fail2ban_sshd_logpath[ansible_facts['os_family']] | default('/var/log/auth.log') }}"
+    maxretry: "{{ fail2ban_maxretry }}"
+    bantime: "{{ fail2ban_bantime }}"
+    findtime: "{{ fail2ban_findtime }}"
+  - name: nginx-http-auth
+    enabled: false
+    port: "http,https"
+    filter: nginx-http-auth
+    logpath: /var/log/nginx/error.log
+    maxretry: "{{ fail2ban_maxretry }}"
+    bantime: "{{ fail2ban_bantime }}"
+    findtime: "{{ fail2ban_findtime }}"
+  - name: apache-auth
+    enabled: false
+    port: "http,https"
+    filter: apache-auth
+    logpath: "{{ fail2ban_apache_logpath[ansible_facts['os_family']] | default('/var/log/httpd/error_log') }}"
+    maxretry: "{{ fail2ban_maxretry }}"
+    bantime: "{{ fail2ban_bantime }}"
+    findtime: "{{ fail2ban_findtime }}"
+
+# --- Service management ---------------------------------------------------
+fail2ban_service_enabled: true
+fail2ban_service_state: started

@@ -1,0 +1,8 @@
+---
+# roles/fail2ban_deployment/tasks/debian.yml — Debian-family specific adjustments
+- name: Ensure python3-systemd is present for systemd backend support
+  ansible.builtin.package:
+    name: python3-systemd
+    state: present
+  when: fail2ban_backend in ['auto', 'systemd']
+  tags: [security, fail2ban]

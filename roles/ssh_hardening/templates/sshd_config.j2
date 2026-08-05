@@ -1,0 +1,49 @@
+{{ ansible_managed | comment }}
+# Managed by the ssh_hardening Ansible role — do not edit by hand.
+
+Port {{ ssh_port }}
+Protocol {{ ssh_protocol }}
+{% for addr in ssh_listen_addresses %}
+ListenAddress {{ addr }}
+{% endfor %}
+
+PermitRootLogin {{ ssh_permit_root_login }}
+PasswordAuthentication {{ ssh_password_authentication }}
+PubkeyAuthentication {{ ssh_pubkey_authentication }}
+PermitEmptyPasswords {{ ssh_permit_empty_passwords }}
+ChallengeResponseAuthentication {{ ssh_challenge_response_authentication }}
+UsePAM {{ ssh_usepam }}
+X11Forwarding {{ ssh_x11_forwarding }}
+AllowAgentForwarding {{ ssh_allow_agent_forwarding }}
+AllowTcpForwarding {{ ssh_allow_tcp_forwarding }}
+MaxAuthTries {{ ssh_max_auth_tries }}
+LoginGraceTime {{ ssh_login_grace_time }}
+ClientAliveInterval {{ ssh_client_alive_interval }}
+ClientAliveCountMax {{ ssh_client_alive_count_max }}
+MaxSessions {{ ssh_max_sessions }}
+
+Ciphers {{ ssh_ciphers | join(',') }}
+MACs {{ ssh_macs | join(',') }}
+KexAlgorithms {{ ssh_kex_algorithms | join(',') }}
+
+{% if ssh_banner_enabled %}
+Banner {{ ssh_banner_path }}
+{% endif %}
+
+{% if ssh_allow_groups %}
+AllowGroups {{ ssh_allow_groups | join(' ') }}
+{% endif %}
+{% if ssh_allow_users %}
+AllowUsers {{ ssh_allow_users | join(' ') }}
+{% endif %}
+{% if ssh_deny_groups %}
+DenyGroups {{ ssh_deny_groups | join(' ') }}
+{% endif %}
+{% if ssh_deny_users %}
+DenyUsers {{ ssh_deny_users | join(' ') }}
+{% endif %}
+
+Subsystem sftp /usr/libexec/openssh/sftp-server
+{% if ssh_config_d_path[ansible_facts['os_family']] is defined %}
+Include {{ ssh_config_d_path[ansible_facts['os_family']] }}/*.conf
+{% endif %}

@@ -1,0 +1,22 @@
+---
+# roles/os_patch_rolling_update/tasks/redhat.yml — RedHat-family full upgrade
+- name: Refresh dnf metadata cache
+  ansible.builtin.dnf:
+    update_cache: true
+  when: os_patch_update_cache | bool
+  tags: [patch, os_patch_rolling_update]
+
+- name: Upgrade all packages to latest (dnf upgrade), excluding pinned packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    exclude: "{{ os_patch_exclude_packages | join(',') if os_patch_exclude_packages else omit }}"
+    update_cache: false
+  register: os_patch_redhat_result
+  tags: [patch, os_patch_rolling_update]
+
+- name: Remove dependencies that are no longer required
+  ansible.builtin.dnf:
+    autoremove: true
+  when: os_patch_autoremove | bool
+  tags: [patch, os_patch_rolling_update]

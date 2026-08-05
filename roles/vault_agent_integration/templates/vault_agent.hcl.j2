@@ -1,0 +1,40 @@
+{{ ansible_managed | comment }}
+# Managed by the vault_agent_integration Ansible role — do not edit by hand.
+
+pid_file = "{{ vault_agent_data_dir }}/pidfile"
+
+vault {
+  address = "{{ vault_addr }}"
+}
+
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      role_id_file_path   = "{{ vault_agent_config_dir }}/role_id"
+      secret_id_file_path = "{{ vault_agent_config_dir }}/secret_id"
+      remove_secret_id_file_after_reading = false
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "{{ vault_agent_data_dir }}/token"
+    }
+  }
+}
+
+{% if vault_agent_token_renew_enabled %}
+cache {
+  use_auto_auth_token = true
+}
+{% endif %}
+
+{% for tmpl in vault_agent_templates %}
+template {
+  source      = "{{ vault_agent_config_dir }}/{{ tmpl.dest | basename }}.ctmpl"
+  destination = "{{ tmpl.dest }}"
+  perms       = "{{ tmpl.mode | default('0600') }}"
+}
+
+{% endfor %}

@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: package_version_pinning
+  author: DevOps Automation Collection
+  description: Locks specific packages at a fixed version — dnf versionlock plugin on RHEL family, apt-mark hold on Debian family — driven by a pinned_packages list var.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - package_version_pinning
+    - pinning
+dependencies: []

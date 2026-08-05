@@ -1,0 +1,14 @@
+---
+# roles/patch_inventory_facts/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Report output ------------------------------------------------------
+patch_inventory_report_dir: "/tmp/patch_reports"          # local dir on the control node (delegate_to: localhost)
+patch_inventory_report_file: "{{ patch_inventory_report_dir }}/patch_inventory_{{ ansible_date_time.iso8601_basic_short }}.json"
+patch_inventory_write_csv: true
+patch_inventory_report_csv_file: "{{ patch_inventory_report_dir }}/patch_inventory_{{ ansible_date_time.iso8601_basic_short }}.csv"
+
+# --- Behaviour ------------------------------------------------------------
+patch_inventory_include_package_facts: true   # collect full installed-package inventory via ansible.builtin.package_facts
+patch_inventory_fail_on_check_error: false    # dnf/apt check-update commands can return non-zero for "updates found"; do not fail the play

@@ -1,0 +1,94 @@
+---
+# roles/systemd_service_deployment/tasks/main.yml
+# Generic reusable role: templates and deploys any custom systemd unit given
+# service_name, exec_start, working_directory, service_user, and env_vars.
+# Works identically on RedHat and Debian families since systemd is the target,
+# not a distro-specific init system.
+
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "systemd_service_deployment supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [deploy, systemd_service]
+
+- name: Assert required service identity variables are set
+  ansible.builtin.assert:
+    that:
+      - service_name | length > 0
+      - exec_start | length > 0
+      - service_user | length > 0
+    fail_msg: "service_name, exec_start, and service_user must all be set for systemd_service_deployment"
+  tags: [deploy, systemd_service]
+
+- name: Ensure service group exists
+  ansible.builtin.group:
+    name: "{{ service_group }}"
+    state: present
+  when: service_manage_user | bool
+  tags: [deploy, systemd_service]
+
+- name: Ensure service user exists (no login shell)
+  ansible.builtin.user:
+    name: "{{ service_user }}"
+    group: "{{ service_group }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+  when: service_manage_user | bool
+  tags: [deploy, systemd_service]
+
+- name: Ensure working directory exists
+  ansible.builtin.file:
+    path: "{{ working_directory }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "{{ service_directory_mode }}"
+  when: service_manage_directory | bool
+  tags: [deploy, systemd_service]
+
+- name: Template the custom systemd unit
+  ansible.builtin.template:
+    src: custom.service.j2
+    dest: "{{ systemd_unit_dir }}/{{ service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart custom service
+  tags: [deploy, systemd_service]
+
+- name: Ensure the custom service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ service_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  tags: [deploy, systemd_service]
+
+- name: Wait for the service's health-check port to accept connections (guarded, optional)
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ service_health_check_url | urlsplit('port') }}"
+    delay: "{{ service_health_check_delay }}"
+    timeout: "{{ service_health_check_timeout }}"
+  when:
+    - service_health_check_enabled | bool
+    - service_health_check_url | length > 0
+  tags: [deploy, systemd_service]
+
+- name: Perform post-deploy HTTP health check (guarded, optional)
+  ansible.builtin.uri:
+    url: "{{ service_health_check_url }}"
+    status_code: 200
+    return_content: false
+  register: systemd_service_health_result
+  retries: "{{ service_health_check_retries }}"
+  delay: "{{ service_health_check_delay }}"
+  until: systemd_service_health_result.status == 200
+  when:
+    - service_health_check_enabled | bool
+    - service_health_check_url | length > 0
+  tags: [deploy, systemd_service]

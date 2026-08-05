@@ -1,0 +1,41 @@
+---
+# roles/docker_engine_setup/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Package sourcing --------------------------------------------------------
+docker_edition: "docker-ce"          # community edition packages from Docker's official repo
+docker_package_state: present
+docker_service_enabled: true
+docker_service_state: started
+
+# --- daemon.json tuning -------------------------------------------------------
+docker_log_driver: "json-file"
+docker_log_max_size: "10m"
+docker_log_max_file: "3"
+docker_storage_driver: "overlay2"
+docker_registry_mirrors: []          # e.g. ["https://mirror.gcr.io"]
+docker_insecure_registries: []       # e.g. ["registry.internal.example.com:5000"]
+docker_default_address_pools: []     # e.g. [{base: "172.30.0.0/16", size: 24}]
+docker_live_restore: true            # keep containers running across dockerd restarts
+docker_userland_proxy: false
+
+# --- Users granted docker group membership (passwordless docker CLI access) --
+docker_group_members: []             # e.g. ["deploy", "ansible_svc"]
+
+# --- Repository coordinates (mirrors repo_management-style repo-add task) ----
+docker_repo_gpg_key_url_redhat: "https://download.docker.com/linux/{{ 'centos' if ansible_facts['distribution'] == 'CentOS' else 'rhel' }}/gpg"
+docker_repo_baseurl_redhat: "https://download.docker.com/linux/{{ 'centos' if ansible_facts['distribution'] == 'CentOS' else 'rhel' }}/$releasever/$basearch/stable"
+docker_repo_gpg_key_url_debian: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg"
+docker_repo_baseurl_debian: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}"
+
+# --- Secrets manager integration (for authenticated private registry mirrors) --
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/docker/{{ inventory_hostname }}"
+# HashiCorp Vault example:
+#   docker_registry_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                   engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+# AWS Secrets Manager example:
+#   docker_registry_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

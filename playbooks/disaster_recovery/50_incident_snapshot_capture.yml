@@ -1,0 +1,8 @@
+---
+- name: Capture on-demand incident diagnostic snapshot for postmortem analysis
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: incident_snapshot_capture
+  tags: [dr, incidentcapture]

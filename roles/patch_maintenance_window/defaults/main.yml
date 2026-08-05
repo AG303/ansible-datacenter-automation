@@ -1,0 +1,19 @@
+---
+# roles/patch_maintenance_window/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Maintenance window definition -----------------------------------------------
+# cron-like start/end expressed as day-of-week + HH:MM, evaluated against the
+# CONTROL NODE's local clock (delegate_to: localhost) so the window is
+# consistent regardless of each managed host's own timezone setting.
+maintenance_window:
+  enabled: true
+  days: ["Tue", "Thu"]              # 3-letter day abbreviations the window is open on; [] = every day
+  start_time: "22:00"               # HH:MM, 24h clock
+  end_time: "02:00"                 # HH:MM, 24h clock — may cross midnight (end < start means "wraps to next day")
+  timezone: "UTC"                   # IANA timezone name used to interpret start_time/end_time
+
+# --- Override / bypass -------------------------------------------------------------
+maintenance_window_force_run: false     # set true (e.g. via -e) to bypass the window check for an emergency patch
+maintenance_window_fail_instead_of_skip: false   # if true, fail the play instead of skipping remaining tasks when outside the window

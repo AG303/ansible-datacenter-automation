@@ -1,0 +1,34 @@
+---
+# roles/postgresql_database_deployment/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Install PGDG repository RPM (official PostgreSQL upstream packages)
+  ansible.builtin.dnf:
+    name: >-
+      https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_facts['distribution_major_version'] }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    state: present
+    disable_gpg_check: false
+  register: postgresql_pgdg_repo_result
+  changed_when: postgresql_pgdg_repo_result.changed
+  tags: [deploy, postgresql]
+
+- name: Disable the distro built-in postgresql module (avoid version conflicts with PGDG)
+  ansible.builtin.command: dnf -qy module disable postgresql
+  changed_when: true
+  tags: [deploy, postgresql]
+
+- name: Initialize the PostgreSQL database cluster (initdb) if not already initialized
+  ansible.builtin.command: >-
+    {{ postgresql_bin_dir['RedHat'] }}/postgresql-{{ postgresql_version }}-setup initdb
+  args:
+    creates: "{{ postgresql_data_dir['RedHat'] }}/PG_VERSION"
+  tags: [deploy, postgresql]
+
+- name: Open PostgreSQL port in firewalld (only when listen_addresses is not localhost)
+  ansible.posix.firewalld:
+    port: "{{ postgresql_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - postgresql_listen_addresses != 'localhost'
+  tags: [deploy, postgresql]

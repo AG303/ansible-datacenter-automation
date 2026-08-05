@@ -1,0 +1,44 @@
+---
+# roles/backup_restore_verification/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+# This role always restores into an isolated scratch environment/container —
+# it never touches production data.
+
+# --- Which backup source to verify -------------------------------------------------
+backup_verify_source: database          # database | restic
+
+# --- Scratch environment ---------------------------------------------------------------
+backup_verify_container_image: "postgres:16-alpine"
+backup_verify_container_name: "backup-verify-scratch"
+backup_verify_container_network: "bridge"
+backup_verify_scratch_data_dir: "/var/tmp/backup-verify-scratch"
+
+# --- Database restore verification ---------------------------------------------------------
+backup_verify_db_engine: postgresql      # mysql | postgresql
+backup_verify_db_name: "app_production"
+backup_verify_expected_min_row_count: 1  # sanity floor; a restored DB with 0 rows fails verification
+backup_verify_row_count_query: "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+
+# --- Restic restore verification -------------------------------------------------------------
+backup_verify_restic_repository: ""      # inherited from backup_restic_orchestration's restic_repository if unset
+backup_verify_restic_restore_target: "/var/tmp/backup-verify-scratch/restic-restore"
+backup_verify_restic_checksum_paths:
+  - /etc/hosts
+
+# --- Credentials (NEVER hardcode) ------------------------------------------------------------
+backup_verify_credential_source: vault    # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/backup-verify/{{ backup_verify_source }}"
+aws_region: "us-east-1"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   backup_verify_secret_value: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                    engine_mount_point=vault_kv_mount, url=vault_addr).secret.value }}"
+# AWS Secrets Manager example:
+#   backup_verify_secret_value: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Reporting / notification -------------------------------------------------------------------
+backup_verify_report_path: "/var/log/backup_restore_verification/report-{{ ansible_date_time.iso8601_basic_short }}.json"
+backup_verify_notify_webhook_url: ""
+backup_verify_cleanup_after_run: true

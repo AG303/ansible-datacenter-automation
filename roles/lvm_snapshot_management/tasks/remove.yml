@@ -1,0 +1,54 @@
+---
+# roles/lvm_snapshot_management/tasks/remove.yml
+- name: Remove an explicitly named snapshot LV
+  community.general.lvol:
+    vg: "{{ item.vg }}"
+    lv: "{{ lvm_remove_snapshot_name }}"
+    state: absent
+    force: true
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ lvm_remove_snapshot_name }}"
+  when: lvm_remove_snapshot_name | length > 0
+  tags: [dr, lvm]
+
+- name: Find snapshot cookie files recorded at creation time (age-based purge tracking)
+  ansible.builtin.find:
+    paths: /var/lib/lvm_snapshot_management
+    patterns: "*.snapinfo"
+    age: "{{ lvm_snapshot_retention_days }}d"
+  register: lvm_expired_snapinfo
+  when: lvm_remove_snapshot_name | length == 0
+  tags: [dr, lvm]
+
+- name: Read expired snapshot metadata (vg/lv pairs) for age-based purge
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ lvm_expired_snapinfo.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: lvm_expired_snapinfo_content
+  when: lvm_remove_snapshot_name | length == 0
+  tags: [dr, lvm]
+
+- name: Remove expired snapshot LVs identified by retention tracking
+  community.general.lvol:
+    vg: "{{ (item.content | b64decode | from_json).vg }}"
+    lv: "{{ (item.content | b64decode | from_json).lv }}"
+    state: absent
+    force: true
+  loop: "{{ lvm_expired_snapinfo_content.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  when: lvm_remove_snapshot_name | length == 0
+  tags: [dr, lvm]
+
+- name: Remove processed snapshot metadata tracking files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ lvm_expired_snapinfo.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: lvm_remove_snapshot_name | length == 0
+  tags: [dr, lvm]

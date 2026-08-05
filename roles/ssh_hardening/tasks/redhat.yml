@@ -1,0 +1,24 @@
+---
+# roles/ssh_hardening/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Open custom SSH port in firewalld (if not default 22)
+  ansible.posix.firewalld:
+    port: "{{ ssh_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ssh_port | int != 22
+    - ansible_facts.services['firewalld.service'] is defined
+  tags: [security, ssh]
+
+- name: Ensure SELinux allows sshd on custom port
+  community.general.seport:
+    ports: "{{ ssh_port }}"
+    proto: tcp
+    setype: ssh_port_t
+    state: present
+  when:
+    - ssh_port | int != 22
+    - ansible_facts['selinux']['status'] is defined
+    - ansible_facts['selinux']['status'] == 'enabled'
+  tags: [security, ssh]

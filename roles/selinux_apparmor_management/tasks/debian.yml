@@ -1,0 +1,44 @@
+---
+# roles/selinux_apparmor_management/tasks/debian.yml — AppArmor management
+- name: Ensure AppArmor and utils packages are installed
+  ansible.builtin.package:
+    name:
+      - apparmor
+      - "{{ mac_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, mac]
+
+- name: Ensure AppArmor service is enabled and running
+  ansible.builtin.service:
+    name: apparmor
+    state: started
+    enabled: true
+  tags: [security, mac]
+
+- name: Manage AppArmor profile mode via community.general.apparmor
+  community.general.apparmor:
+    name: "{{ item.name }}"
+    state: "{{ item.mode | default(apparmor_default_mode) }}"
+  loop: "{{ apparmor_profiles }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _apparmor_module_result
+  failed_when: false
+  tags: [security, mac]
+
+# Fallback path: community.general.apparmor may be unavailable on older
+# collection versions, or may fail for profiles not recognized by the module.
+# In that case, drive the equivalent aa-enforce/aa-complain CLI tools directly
+# with explicit changed_when logic to preserve idempotent reporting.
+- name: "Fallback: set AppArmor profile mode via aa-enforce/aa-complain CLI"
+  ansible.builtin.command:
+    cmd: >-
+      {{ 'aa-enforce' if (item.item.mode | default(apparmor_default_mode)) == 'enforce' else 'aa-complain' }}
+      {{ apparmor_profiles_dir }}/{{ item.item.name }}
+  loop: "{{ _apparmor_module_result.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.failed | default(false)
+  register: _aa_cli_result
+  changed_when: "'Setting' in _aa_cli_result.stdout or 'now' in _aa_cli_result.stdout"
+  tags: [security, mac]

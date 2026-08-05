@@ -1,0 +1,16 @@
+---
+# roles/certificate_management/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+cert_ca_trust_update_command:
+  RedHat: update-ca-trust extract
+  Debian: update-ca-certificates
+
+cert_ca_trust_anchor_dir:
+  RedHat: /etc/pki/ca-trust/source/anchors
+  Debian: /usr/local/share/ca-certificates
+
+cert_crypto_package_name:
+  RedHat: python3-cryptography
+  Debian: python3-cryptography

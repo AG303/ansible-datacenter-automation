@@ -1,0 +1,17 @@
+---
+# Reference chain for the Disaster Recovery suite (items 39-50). Backup and
+# health-check roles are safe to schedule regularly; failover/restore roles
+# carry pause-gated confirmation and should be run explicitly, not scheduled.
+- ansible.builtin.import_playbook: disaster_recovery/39_backup_restic_orchestration.yml
+- ansible.builtin.import_playbook: disaster_recovery/40_database_backup_restore.yml
+- ansible.builtin.import_playbook: disaster_recovery/41_etcd_cluster_backup_restore.yml
+- ansible.builtin.import_playbook: disaster_recovery/43_lvm_snapshot_management.yml
+- ansible.builtin.import_playbook: disaster_recovery/44_config_backup_git.yml
+- ansible.builtin.import_playbook: disaster_recovery/49_cross_region_data_sync.yml
+- ansible.builtin.import_playbook: disaster_recovery/46_replication_health_check.yml
+- ansible.builtin.import_playbook: disaster_recovery/47_backup_restore_verification.yml
+- ansible.builtin.import_playbook: disaster_recovery/45_dr_test_automation.yml
+- ansible.builtin.import_playbook: disaster_recovery/50_incident_snapshot_capture.yml
+# 42_dr_failover_orchestration.yml and 48_dr_runbook_execution.yml are
+# intentionally NOT auto-chained — run them explicitly and only during an
+# actual DR event or a deliberately scheduled DR test.

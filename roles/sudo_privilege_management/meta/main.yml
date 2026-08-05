@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: sudo_privilege_management
+  author: DevOps Automation Collection
+  description: Template-driven /etc/sudoers.d/* file generation from a sudo_rules list variable, validated with visudo -c before activation, with automatic backup of prior state.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - sudo
+    - privilege-management
+dependencies: []

@@ -1,0 +1,6 @@
+---
+# roles/apache_deployment/handlers/main.yml
+- name: Reload apache
+  ansible.builtin.service:
+    name: "{{ apache_service_name[ansible_facts['os_family']] }}"
+    state: reloaded

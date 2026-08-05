@@ -1,0 +1,74 @@
+---
+# roles/cross_region_data_sync/tasks/sync_rclone.yml
+# Syncs object-storage-backed application data between regions using rclone.
+- name: Ensure rclone configuration directory exists
+  ansible.builtin.file:
+    path: "{{ cross_region_rclone_config_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, crossregionsync]
+
+- name: Run rclone sync from primary-region remote to DR-region remote
+  ansible.builtin.command:
+    cmd: >-
+      rclone sync {{ cross_region_rclone_remote_source }} {{ cross_region_rclone_remote_dest }}
+      --config {{ cross_region_rclone_config_path }}
+      --bwlimit {{ cross_region_rclone_bwlimit }}
+      --exclude {{ cross_region_rsync_excludes | join(' --exclude ') }}
+      --log-level INFO
+  register: cross_region_rclone_result
+  changed_when: "'Transferred:' in cross_region_rclone_result.stderr or cross_region_rclone_result.rc == 0"
+  tags: [dr, crossregionsync]
+
+- name: Check rclone sync lag via lsjson timestamps
+  ansible.builtin.command:
+    cmd: >-
+      rclone lsjson {{ cross_region_rclone_remote_dest }} --config {{ cross_region_rclone_config_path }}
+      --recursive --files-only
+  register: cross_region_rclone_dest_listing
+  changed_when: false
+  tags: [dr, crossregionsync]
+
+- name: Compile cross-region rclone sync report
+  ansible.builtin.set_fact:
+    cross_region_sync_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      tool: rclone
+      remote_source: "{{ cross_region_rclone_remote_source }}"
+      remote_dest: "{{ cross_region_rclone_remote_dest }}"
+      sync_rc: "{{ cross_region_rclone_result.rc }}"
+  tags: [dr, crossregionsync]
+
+- name: Ensure sync report directory exists
+  ansible.builtin.file:
+    path: "{{ cross_region_sync_report_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [dr, crossregionsync]
+
+- name: Write cross-region rclone sync report to disk
+  ansible.builtin.copy:
+    content: "{{ cross_region_sync_report | to_nice_json }}\n"
+    dest: "{{ cross_region_sync_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, crossregionsync]
+
+- name: Notify if rclone sync did not complete successfully
+  ansible.builtin.uri:
+    url: "{{ cross_region_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "Cross-region rclone sync ALERT on {{ inventory_hostname }}: rc={{ cross_region_rclone_result.rc }}"
+    status_code: [200, 201, 204]
+  when:
+    - cross_region_notify_webhook_url | length > 0
+    - cross_region_rclone_result.rc != 0
+  tags: [dr, crossregionsync]

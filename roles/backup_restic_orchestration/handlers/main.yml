@@ -1,0 +1,8 @@
+---
+# roles/backup_restic_orchestration/handlers/main.yml
+# This role has no service to restart/reload; retained for convention
+# consistency and future extension (e.g. reloading a backup-agent daemon).
+- name: Noop restic handler placeholder
+  ansible.builtin.debug:
+    msg: "No service reload required for backup_restic_orchestration"
+  listen: "Reload restic agent"

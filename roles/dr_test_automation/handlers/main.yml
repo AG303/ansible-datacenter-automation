@@ -1,0 +1,7 @@
+---
+# roles/dr_test_automation/handlers/main.yml
+# This role is purely a read/report role; no service to restart or reload.
+- name: Noop dr test handler placeholder
+  ansible.builtin.debug:
+    msg: "No service action required for dr_test_automation"
+  listen: "Archive DR readiness report"

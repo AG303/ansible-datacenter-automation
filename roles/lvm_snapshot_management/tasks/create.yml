@@ -1,0 +1,74 @@
+---
+# roles/lvm_snapshot_management/tasks/create.yml
+- name: Gather free-space facts for each target volume group
+  ansible.builtin.command:
+    cmd: "vgs --noheadings --units g --nosuffix -o vg_name,vg_free,vg_size {{ item.vg }}"
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}"
+  register: lvm_vg_facts
+  changed_when: false
+  tags: [dr, lvm]
+
+- name: Compute free-space percentage per volume group
+  ansible.builtin.set_fact:
+    lvm_vg_free_pct: "{{ lvm_vg_free_pct | default({}) | combine({item.item.vg: ((item.stdout.split()[1] | float) / (item.stdout.split()[2] | float) * 100) | round(1)}) }}"
+  loop: "{{ lvm_vg_facts.results }}"
+  loop_control:
+    label: "{{ item.item.vg }}"
+  tags: [dr, lvm]
+
+- name: Assert sufficient free space exists before snapshot creation
+  ansible.builtin.assert:
+    that:
+      - (lvm_vg_free_pct[item.vg] | float) >= (lvm_min_free_percent_required | float)
+    fail_msg: >-
+      Volume group {{ item.vg }} has only {{ lvm_vg_free_pct[item.vg] }}% free extents,
+      below the required {{ lvm_min_free_percent_required }}% — refusing to create a snapshot.
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}"
+  tags: [dr, lvm]
+
+- name: Create LVM snapshot for each configured origin volume
+  community.general.lvol:
+    vg: "{{ item.vg }}"
+    lv: "{{ item.lv }}"
+    snapshot: "{{ item.lv }}{{ lvm_snapshot_suffix }}"
+    size: "{{ lvm_snapshot_size }}"
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ item.lv }}"
+  register: lvm_snapshot_create_result
+  tags: [dr, lvm]
+
+- name: Report created snapshots
+  ansible.builtin.debug:
+    msg: >-
+      Created snapshot {{ item.item.lv }}{{ lvm_snapshot_suffix }} for
+      {{ item.item.vg }}/{{ item.item.lv }} on {{ inventory_hostname }}
+  loop: "{{ lvm_snapshot_create_result.results }}"
+  loop_control:
+    label: "{{ item.item.vg }}/{{ item.item.lv }}"
+  tags: [dr, lvm]
+
+- name: Ensure snapshot retention metadata directory exists
+  ansible.builtin.file:
+    path: /var/lib/lvm_snapshot_management
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [dr, lvm]
+
+- name: Record snapshot metadata for age-based retention tracking
+  ansible.builtin.copy:
+    content: "{{ {'vg': item.vg, 'lv': item.lv + lvm_snapshot_suffix} | to_json }}"
+    dest: "/var/lib/lvm_snapshot_management/{{ item.vg }}_{{ item.lv }}{{ lvm_snapshot_suffix }}.snapinfo"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ lvm_volumes }}"
+  loop_control:
+    label: "{{ item.vg }}/{{ item.lv }}"
+  tags: [dr, lvm]

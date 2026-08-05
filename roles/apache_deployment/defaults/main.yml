@@ -1,0 +1,58 @@
+---
+# roles/apache_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+apache_package_state: present
+apache_service_enabled: true
+apache_service_state: started
+
+# --- Global server tuning ---------------------------------------------------
+apache_server_admin: webmaster@example.com
+apache_timeout: 60
+apache_keepalive: "On"
+apache_max_keepalive_requests: 100
+apache_keepalive_timeout: 5
+apache_server_tokens: "Prod"      # minimal info in Server header
+apache_server_signature: "Off"
+
+# --- Modules (Debian a2enmod-style; RedHat ships most as always-on via conf.modules.d) ---
+apache_debian_modules_enabled:
+  - rewrite
+  - ssl
+  - headers
+  - proxy
+  - proxy_http
+
+# --- Vhost management --------------------------------------------------------
+# Each entry becomes one templated vhost file. RedHat serves vhost files
+# directly via conf.d includes; Debian uses sites-available/sites-enabled with
+# an a2ensite-equivalent command wrapper task.
+#
+# Example:
+# apache_vhosts:
+#   - name: app.example.com
+#     server_name: app.example.com
+#     listen_port: 80
+#     document_root: /var/www/app
+#     enabled: true
+#     tls_enabled: false
+#     tls_cert_path: ""             # populated from certificate_management role output when tls_enabled
+#     tls_key_path: ""
+#     proxy_pass: "http://127.0.0.1:8080/"   # optional; generates a ProxyPass reverse-proxy vhost
+apache_vhosts: []
+
+apache_certificate_management_output_dir: /etc/pki/tls/apache
+apache_tls_protocols: "-all +TLSv1.2 +TLSv1.3"
+apache_tls_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+
+# --- Secrets manager integration (for vhosts needing basic-auth / upstream API keys) --
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/apache/{{ inventory_hostname }}"
+# HashiCorp Vault example:
+#   apache_basic_auth_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                     engine_mount_point=vault_kv_mount, url=vault_addr).secret.password }}"
+# AWS Secrets Manager example:
+#   apache_basic_auth_password: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

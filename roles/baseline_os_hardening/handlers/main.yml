@@ -1,0 +1,6 @@
+---
+# roles/baseline_os_hardening/handlers/main.yml
+- name: Reload sysctl
+  ansible.builtin.command:
+    cmd: sysctl --system
+  changed_when: true

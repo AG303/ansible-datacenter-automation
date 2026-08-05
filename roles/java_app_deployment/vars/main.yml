@@ -1,0 +1,8 @@
+---
+# roles/java_app_deployment/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+java_package_name:
+  RedHat: "java-{{ java_version }}-openjdk-{{ java_package_flavor }}"
+  Debian: "openjdk-{{ java_version }}-jdk{{ '-headless' if java_package_flavor == 'headless' else '' }}"

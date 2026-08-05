@@ -1,0 +1,6 @@
+---
+# roles/docker_engine_setup/handlers/main.yml
+- name: Restart docker
+  ansible.builtin.service:
+    name: "{{ docker_service_name[ansible_facts['os_family']] }}"
+    state: restarted

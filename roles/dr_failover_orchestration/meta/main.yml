@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: dr_failover_orchestration
+  author: DevOps Automation Collection
+  description: Orchestrates a guarded failover to a DR site — health checks, standby database promotion, DNS/load-balancer repoint, and completion notification.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - dr
+    - failover
+dependencies: []

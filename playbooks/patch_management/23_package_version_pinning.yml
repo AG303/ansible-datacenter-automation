@@ -1,0 +1,8 @@
+---
+- name: Lock pinned packages at their fixed versions fleet-wide
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  roles:
+    - role: package_version_pinning
+  tags: [patch, package_version_pinning]

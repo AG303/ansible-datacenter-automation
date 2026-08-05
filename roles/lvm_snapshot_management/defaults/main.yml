@@ -1,0 +1,27 @@
+---
+# roles/lvm_snapshot_management/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Action switch ----------------------------------------------------------------
+snapshot_action: create               # create | remove | revert
+
+# --- Volumes to snapshot ------------------------------------------------------------
+lvm_volumes:
+  - vg: "vg_data"
+    lv: "lv_app"
+  - vg: "vg_data"
+    lv: "lv_db"
+
+# --- Snapshot naming / sizing ---------------------------------------------------------
+lvm_snapshot_suffix: "-snap-{{ ansible_date_time.iso8601_basic_short }}"
+lvm_snapshot_size: "20%ORIGIN"        # size or percentage of the origin volume's extents
+lvm_snapshot_retention_days: 7
+lvm_min_free_percent_required: 25     # pre-check: VG must have at least this % free extents
+
+# --- Revert options (DESTRUCTIVE) -------------------------------------------------------
+lvm_revert_confirm: false             # must be explicitly true to allow a revert (merge) to proceed
+lvm_revert_snapshot_name: ""          # explicit snapshot LV name to revert; empty = latest per origin
+
+# --- Removal options ----------------------------------------------------------------------
+lvm_remove_snapshot_name: ""          # explicit snapshot LV name to remove; empty = purge all older than retention

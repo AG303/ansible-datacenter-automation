@@ -1,0 +1,55 @@
+---
+# roles/vault_agent_integration/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Secret delivery mode ----------------------------------------------
+# vault_agent  -> installs and runs the HashiCorp Vault Agent as a systemd
+#                 service, using AppRole auth with auto-renewing token and
+#                 template rendering of secrets to local files.
+# aws_lightweight -> skips the Vault Agent daemon entirely and instead relies
+#                 on a scheduled systemd timer that runs a small script using
+#                 the amazon.aws.aws_secret lookup pattern (documented, not
+#                 executed by Ansible itself at runtime — Ansible just installs
+#                 the timer unit).
+vault_agent_integration_mode: vault_agent   # vault_agent|aws_lightweight
+
+# --- Vault Agent (HashiCorp Vault) settings ---------------------------------
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_agent_version: "1.16.3"
+vault_agent_install_dir: /usr/local/bin
+vault_agent_config_dir: /etc/vault-agent
+vault_agent_data_dir: /var/lib/vault-agent
+vault_agent_user: vault-agent
+vault_agent_group: vault-agent
+
+# AppRole auth — role_id is not secret and may be committed to group_vars;
+# secret_id MUST come from the external secrets manager (never hardcoded).
+vault_approle_role_id: ""              # e.g. "db02de05-fa39-4855-059b-67221c5c2f63"
+vault_approle_secret_id_path: "datacenter/vault_agent/approle_secret_id/{{ inventory_hostname }}"
+vault_kv_mount: "kv"
+
+# Templates: each entry renders one Vault secret to a local file for
+# consumption by other roles (e.g. an application reading a DB password file).
+# Example:
+# vault_agent_templates:
+#   - secret_path: "kv/data/datacenter/myapp/db_creds"
+#     dest: /etc/myapp/db_creds.env
+#     mode: "0600"
+#     owner: myapp
+#     group: myapp
+vault_agent_templates: []
+
+vault_agent_token_renew_enabled: true
+vault_agent_auto_auth_wrap_ttl: "5m"
+
+# --- AWS Secrets Manager lightweight mode -----------------------------------
+aws_region: "us-east-1"
+aws_lightweight_secret_path: "datacenter/vault_agent_lightweight/{{ inventory_hostname }}"
+aws_lightweight_dest_file: /etc/vault-agent/aws_secret_lightweight.env
+aws_lightweight_dest_mode: "0600"
+aws_lightweight_refresh_interval: "15min"   # systemd OnUnitActiveSec= interval for the refresh timer
+
+# --- Service management ---------------------------------------------------
+vault_agent_service_enabled: true
+vault_agent_service_state: started

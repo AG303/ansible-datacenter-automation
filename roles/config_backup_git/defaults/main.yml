@@ -1,0 +1,43 @@
+---
+# roles/config_backup_git/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Paths to track --------------------------------------------------------------
+config_backup_paths:
+  - /etc/ssh/sshd_config
+  - /etc/hosts
+  - /etc/fstab
+  - /etc/sysctl.conf
+  - /etc/security/limits.conf
+  - /etc/haproxy/haproxy.cfg
+  - /etc/nginx
+  - /etc/httpd
+
+# --- Local working copy -----------------------------------------------------------
+config_backup_local_repo: /var/lib/config-backup-git
+config_backup_commit_author_name: "config-backup-bot"
+config_backup_commit_author_email: "config-backup-bot@dc.internal.example.com"
+
+# --- Remote bare repository (on a backup host) -------------------------------------
+config_backup_remote_enabled: true
+config_backup_remote_host: "git-backup.dc.internal.example.com"
+config_backup_remote_user: "gitbackup"
+config_backup_remote_bare_path: "/srv/git/config-backups/{{ inventory_hostname }}.git"
+config_backup_remote_url: "ssh://{{ config_backup_remote_user }}@{{ config_backup_remote_host }}{{ config_backup_remote_bare_path }}"
+
+# --- SSH key for pushing to the remote bare repo (NEVER hardcode a private key) ------
+config_backup_ssh_key_source: vault    # vault | aws_secrets_manager
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/config-backup/{{ inventory_hostname }}/ssh_key"
+aws_region: "us-east-1"
+config_backup_ssh_key_path: "/root/.ssh/config_backup_git_ed25519"
+# HashiCorp Vault example (see tasks/main.yml for actual usage):
+#   config_backup_ssh_private_key: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                                       engine_mount_point=vault_kv_mount, url=vault_addr).secret.private_key }}"
+# AWS Secrets Manager example:
+#   config_backup_ssh_private_key: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+
+# --- Commit behavior -----------------------------------------------------------------
+config_backup_commit_message: "config snapshot {{ ansible_date_time.iso8601 }} on {{ inventory_hostname }}"

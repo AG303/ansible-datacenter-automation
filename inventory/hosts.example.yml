@@ -1,0 +1,39 @@
+---
+# Example static inventory for a mixed-distro datacenter fleet.
+# Replace IPs/hostnames with your actual CMDB export or dynamic inventory plugin output.
+all:
+  children:
+    rhel_family:
+      hosts:
+        web01.dc1.example.com:
+        web02.dc1.example.com:
+        db01.dc1.example.com:
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+
+    debian_family:
+      hosts:
+        app01.dc1.example.com:
+        app02.dc1.example.com:
+        cache01.dc1.example.com:
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+
+    web_tier:
+      hosts:
+        web01.dc1.example.com:
+        web02.dc1.example.com:
+
+    app_tier:
+      hosts:
+        app01.dc1.example.com:
+        app02.dc1.example.com:
+
+    db_tier:
+      hosts:
+        db01.dc1.example.com:
+
+    dr_site:
+      hosts:
+        web01.dc2.example.com:
+        db01.dc2.example.com:

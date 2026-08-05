@@ -1,0 +1,12 @@
+---
+# roles/firewall_management/vars/main.yml
+# OS-family specific facts. Not meant to be overridden by users — only the
+# role maintainer should edit this file when adding distro support.
+
+firewall_package_name:
+  RedHat: firewalld
+  Debian: ufw
+
+firewall_service_name:
+  RedHat: firewalld
+  Debian: ufw

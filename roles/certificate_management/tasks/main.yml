@@ -1,0 +1,40 @@
+---
+# roles/certificate_management/tasks/main.yml
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: "certificate_management supports RedHat and Debian OS families only (found {{ ansible_facts['os_family'] }})"
+  tags: [security, tls]
+
+- name: Ensure python3-cryptography is installed (required by community.crypto)
+  ansible.builtin.package:
+    name: "{{ cert_crypto_package_name[ansible_facts['os_family']] }}"
+    state: present
+  tags: [security, tls]
+
+- name: Ensure certificate backup directory exists
+  ansible.builtin.file:
+    path: "{{ cert_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: cert_backup_before_rotation | bool
+  tags: [security, tls]
+
+- name: Deploy or rotate each declared certificate
+  ansible.builtin.include_tasks: deploy_cert.yml
+  loop: "{{ certificate_deployments }}"
+  loop_control:
+    loop_var: cert_item
+    label: "{{ cert_item.name }}"
+  tags: [security, tls]
+
+- name: Check expiry of all deployed certificates
+  ansible.builtin.include_tasks: check_expiry.yml
+  loop: "{{ certificate_deployments }}"
+  loop_control:
+    loop_var: cert_item
+    label: "{{ cert_item.name }}"
+  tags: [security, tls]

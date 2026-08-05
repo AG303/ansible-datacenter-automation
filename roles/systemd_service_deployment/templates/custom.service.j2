@@ -1,0 +1,28 @@
+{{ ansible_managed | comment }}
+# Managed by the systemd_service_deployment Ansible role — do not edit by hand.
+
+[Unit]
+Description={{ service_name }} (custom service managed by Ansible)
+After=network.target
+
+[Service]
+Type={{ service_type }}
+User={{ service_user }}
+Group={{ service_group }}
+WorkingDirectory={{ working_directory }}
+ExecStart={{ exec_start }}
+{% if service_exec_stop | length > 0 %}
+ExecStop={{ service_exec_stop }}
+{% endif %}
+{% if service_exec_reload | length > 0 %}
+ExecReload={{ service_exec_reload }}
+{% endif %}
+Restart={{ service_restart_policy }}
+RestartSec={{ service_restart_sec }}
+LimitNOFILE={{ service_limit_nofile }}
+{% for key, value in env_vars.items() %}
+Environment="{{ key }}={{ value }}"
+{% endfor %}
+
+[Install]
+WantedBy={{ service_wanted_by }}

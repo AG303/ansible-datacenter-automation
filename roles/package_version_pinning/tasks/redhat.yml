@@ -1,0 +1,54 @@
+---
+# roles/package_version_pinning/tasks/redhat.yml — dnf versionlock plugin management
+- name: Install python3-dnf-plugin-versionlock
+  ansible.builtin.dnf:
+    name: python3-dnf-plugin-versionlock
+    state: present
+  tags: [patch, package_version_pinning]
+
+- name: Ensure the target version is installed before locking (when a specific version is requested)
+  ansible.builtin.dnf:
+    name: "{{ item.name }}-{{ item.version }}"
+    state: present
+    allow_downgrade: true
+  loop: "{{ pinned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - package_version_pinning_state == 'present'
+    - item.version is defined and item.version | length > 0
+  tags: [patch, package_version_pinning]
+
+- name: Add versionlock entries for pinned packages
+  ansible.builtin.command: "dnf versionlock add {{ item.name }}"
+  register: versionlock_add_result
+  changed_when: "'versionlock added' in versionlock_add_result.stdout or 'Adding versionlock' in versionlock_add_result.stdout"
+  loop: "{{ pinned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: package_version_pinning_state == 'present'
+  tags: [patch, package_version_pinning]
+
+- name: Remove versionlock entries for packages no longer pinned
+  ansible.builtin.command: "dnf versionlock delete {{ item.name }}"
+  register: versionlock_delete_result
+  changed_when: "'versionlock deleted' in versionlock_delete_result.stdout or 'Deleting versionlock' in versionlock_delete_result.stdout"
+  failed_when:
+    - versionlock_delete_result.rc != 0
+    - "'no matching' not in versionlock_delete_result.stderr | default('')"
+  loop: "{{ pinned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: package_version_pinning_state == 'absent'
+  tags: [patch, package_version_pinning]
+
+- name: Display current versionlock list
+  ansible.builtin.command: dnf versionlock list
+  register: versionlock_list_result
+  changed_when: false
+  tags: [patch, package_version_pinning]
+
+- name: Show active versionlock entries
+  ansible.builtin.debug:
+    msg: "{{ versionlock_list_result.stdout_lines }}"
+  tags: [patch, package_version_pinning]

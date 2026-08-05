@@ -1,0 +1,53 @@
+---
+# roles/nodejs_app_deployment/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Node.js runtime ------------------------------------------------------------
+nodejs_major_version: "20"           # NodeSource major version line, e.g. "18", "20", "22"
+nodejs_install_method: "nodesource"  # "nodesource" (system package) or "nvm" (per-user version manager)
+nodejs_nvm_version: "v0.39.7"
+nodejs_nvm_install_user: "{{ app_service_user }}"
+
+# --- Application identity --------------------------------------------------------
+app_name: "sample-node-app"
+app_service_user: "nodeapp"
+app_service_group: "nodeapp"
+app_base_dir: "/opt/{{ app_name }}"
+app_env: "production"
+
+# --- Artifact source: either a git checkout or a tarball pulled from an artifact
+# store. Set app_source_type to "git" or "tarball".
+app_source_type: "git"
+app_git_repo: ""                     # e.g. "https://github.com/example-org/sample-node-app.git"
+app_git_version: "main"
+app_artifact_url: ""                 # e.g. "https://artifacts.example.com/sample-node-app/1.4.2.tar.gz"
+app_artifact_checksum: ""             # e.g. "sha256:abcdef123..."
+
+# --- npm build --------------------------------------------------------------------
+app_npm_ci_production: true
+
+# --- systemd unit ------------------------------------------------------------------
+app_exec_start: "/usr/bin/node {{ app_base_dir }}/current/server.js"
+app_port: 3000
+app_env_vars:
+  NODE_ENV: "{{ app_env }}"
+  PORT: "{{ app_port }}"
+
+# --- Rolling deploy + health check --------------------------------------------------
+rolling_batch_size: "30%"
+app_health_check_url: "http://127.0.0.1:{{ app_port }}/health"
+app_health_check_timeout: 30
+app_health_check_retries: 5
+app_health_check_delay: 3
+
+# --- Secrets manager integration (app runtime secrets, e.g. DB creds, API keys) -----
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+vault_secret_path: "datacenter/apps/{{ app_name }}/{{ inventory_hostname }}"
+# HashiCorp Vault example (merge into app_env_vars at the play/group_vars level):
+#   DATABASE_PASSWORD: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_secret_path,
+#                            engine_mount_point=vault_kv_mount, url=vault_addr).secret.db_password }}"
+# AWS Secrets Manager example:
+#   DATABASE_PASSWORD: "{{ lookup('amazon.aws.aws_secret', vault_secret_path, region=aws_region) }}"
+aws_region: "us-east-1"

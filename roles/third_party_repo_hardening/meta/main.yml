@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: third_party_repo_hardening
+  author: DevOps Automation Collection
+  description: Manages EPEL / PPA-style third-party repos safely — installs epel-release with a restrictive default (enabled=0 unless allow-listed) and priority pinning on RHEL family, apt preferences pinning on Debian family so third-party repos never shadow OS base packages.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - third_party_repo_hardening
+    - repository
+dependencies: []

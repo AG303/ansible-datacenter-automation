@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: selinux_apparmor_management
+  author: DevOps Automation Collection
+  description: Manages SELinux mode/booleans/file contexts on RedHat family hosts and AppArmor profile enforcement mode on Debian family hosts.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - security
+    - mac
+    - selinux
+    - apparmor
+dependencies: []

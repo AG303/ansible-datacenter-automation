@@ -1,0 +1,11 @@
+---
+- name: Record pre-patch package version snapshot (and optional LVM snapshot)
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ rolling_batch_size | default('30%') }}"
+  roles:
+    - role: patch_rollback_snapshot
+      vars:
+        patch_rollback_mode: "{{ patch_rollback_mode | default('snapshot') }}"
+  tags: [patch, patch_rollback_snapshot]

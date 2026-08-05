@@ -1,0 +1,51 @@
+---
+# roles/auditd_configuration/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Log storage / rotation -------------------------------------------------
+auditd_log_file: /var/log/audit/audit.log
+auditd_max_log_file_mb: 50
+auditd_num_logs: 10
+auditd_max_log_file_action: rotate    # rotate|keep_logs|ignore|suspend
+auditd_space_left_mb: 100
+auditd_space_left_action: syslog      # ignore|syslog|email|exec|suspend|single|halt
+auditd_admin_space_left_mb: 50
+auditd_admin_space_left_action: suspend
+auditd_disk_full_action: suspend
+auditd_disk_error_action: suspend
+
+# --- Curated audit.rules watch list -----------------------------------------
+# Each category can be toggled independently; the template only emits rules
+# for categories that are enabled, keeping the deployed ruleset minimal.
+auditd_watch_identity: true             # /etc/passwd, /etc/group, /etc/shadow, /etc/gshadow
+auditd_watch_privilege_escalation: true # sudoers, sudo command execution, setuid/setgid execs
+auditd_watch_network_config: true       # /etc/hosts, /etc/sysconfig/network*, /etc/netplan, NetworkManager
+auditd_watch_cron: true                 # /etc/crontab, /etc/cron.d, /var/spool/cron
+auditd_watch_sudoers: true              # /etc/sudoers, /etc/sudoers.d
+auditd_watch_log_files: true            # /var/log/auth.log, /var/log/secure, wtmp/btmp/lastlog
+
+# --- Extra custom watches ----------------------------------------------------
+# Additional ad-hoc file/dir watches beyond the curated categories above.
+# Example:
+# auditd_extra_watches:
+#   - path: /etc/myapp/config.d
+#     perms: wa
+#     key: myapp_config
+auditd_extra_watches: []
+
+# --- Remote syslog forwarding -----------------------------------------------
+auditd_forward_to_syslog_enabled: false
+auditd_remote_syslog_server: ""         # e.g. "siem.internal.example.com"
+auditd_remote_syslog_port: 514
+auditd_remote_syslog_protocol: tcp      # tcp|udp
+
+# --- Rule immutability --------------------------------------------------
+# When true, appends "-e 2" to make the ruleset immutable until reboot
+# (requires a reboot to change rules afterwards). Disabled by default so
+# automation can iterate on rules without requiring a reboot each time.
+auditd_rules_immutable: false
+
+# --- Service management ---------------------------------------------------
+auditd_service_enabled: true
+auditd_service_state: started

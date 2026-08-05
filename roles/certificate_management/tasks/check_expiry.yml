@@ -1,0 +1,20 @@
+---
+# roles/certificate_management/tasks/check_expiry.yml
+# Included once per certificate_deployments entry (cert_item).
+- name: "Read certificate expiry information for {{ cert_item.name }}"
+  community.crypto.x509_certificate_info:
+    path: "{{ cert_item.cert_dest }}"
+  register: _cert_info
+  tags: [security, tls]
+
+- name: "Warn if {{ cert_item.name }} is nearing expiry"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: certificate '{{ cert_item.name }}' ({{ cert_item.cert_dest }})
+      expires at {{ _cert_info.not_after }}, which is within the
+      {{ cert_expiry_warning_days }}-day warning window (current time
+      {{ ansible_date_time.iso8601 }}).
+  when: >-
+    ((_cert_info.not_after | to_datetime('%Y%m%d%H%M%SZ')) -
+     (ansible_date_time.iso8601 | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).days <= cert_expiry_warning_days
+  tags: [security, tls]

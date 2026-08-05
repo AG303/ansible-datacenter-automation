@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: unattended_upgrades_config
+  author: DevOps Automation Collection
+  description: Configures automatic patching cadence — dnf-automatic timer on RHEL family, unattended-upgrades plus apt-daily timers on Debian family — with vars for auto-reboot window and email/webhook notification of applied updates.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+  galaxy_tags:
+    - patch
+    - unattended_upgrades_config
+    - automation
+dependencies: []

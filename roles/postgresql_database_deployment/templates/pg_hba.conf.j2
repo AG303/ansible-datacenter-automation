@@ -1,0 +1,12 @@
+{{ ansible_managed | comment(decoration='# ') }}
+# Managed by the postgresql_database_deployment Ansible role — do not edit by hand.
+# TYPE  DATABASE  USER  ADDRESS  METHOD
+
+{% for entry in postgresql_hba_entries %}
+{{ entry.type }} {{ entry.database }} {{ entry.user }} {{ entry.address }} {{ entry.method }}
+{% endfor %}
+{% if postgresql_replication_enabled %}
+
+# Streaming replication connections
+host replication {{ postgresql_replication_user }} 0.0.0.0/0 scram-sha-256
+{% endif %}

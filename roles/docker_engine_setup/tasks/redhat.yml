@@ -1,0 +1,27 @@
+---
+# roles/docker_engine_setup/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure dnf-plugins-core / yum-utils prerequisite is installed
+  ansible.builtin.package:
+    name: "{{ 'dnf-plugins-core' if ansible_facts['distribution_major_version'] | int >= 8 else 'yum-utils' }}"
+    state: present
+  tags: [deploy, docker]
+
+- name: Add Docker CE repository (GPG-signed, official upstream)
+  ansible.builtin.yum_repository:
+    name: docker-ce-stable
+    description: Docker CE Stable - $basearch
+    baseurl: "{{ docker_repo_baseurl_redhat }}"
+    gpgcheck: true
+    gpgkey: "{{ docker_repo_gpg_key_url_redhat }}"
+    enabled: true
+  tags: [deploy, docker]
+
+- name: Open Docker's default bridge/NAT traffic in firewalld (docker manages its own iptables chains)
+  ansible.posix.firewalld:
+    zone: trusted
+    interface: docker0
+    permanent: true
+    immediate: true
+    state: enabled
+  when: ansible_facts.services['firewalld.service'] is defined
+  tags: [deploy, docker]

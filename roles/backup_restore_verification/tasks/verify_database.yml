@@ -1,0 +1,101 @@
+---
+# roles/backup_restore_verification/tasks/verify_database.yml
+# Restores the most recent database dump into an isolated scratch container and
+# checks a row count as a basic integrity proof that the backup is restorable.
+- name: Launch isolated scratch database container
+  community.docker.docker_container:
+    name: "{{ backup_verify_container_name }}"
+    image: "{{ backup_verify_container_image }}"
+    state: started
+    restart_policy: "no"
+    network_mode: "{{ backup_verify_container_network }}"
+    env:
+      POSTGRES_PASSWORD: "{{ backup_verify_secret_value }}"
+      POSTGRES_DB: "{{ backup_verify_db_name }}"
+    volumes:
+      - "{{ backup_verify_scratch_data_dir }}:/scratch"
+    ports:
+      - "15432:5432"
+  when: backup_verify_db_engine == 'postgresql'
+  tags: [dr, backupverify]
+
+- name: Wait for scratch database to accept connections
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ 15432 if backup_verify_db_engine == 'postgresql' else 13306 }}"
+    delay: 3
+    timeout: 60
+  tags: [dr, backupverify]
+
+- name: Fetch the latest dump via the database_backup_restore role (restore-into-scratch mode)
+  ansible.builtin.include_role:
+    name: database_backup_restore
+  vars:
+    db_backup_action: restore
+    db_engine: "{{ backup_verify_db_engine }}"
+    db_host: "127.0.0.1"
+    db_port: "{{ 15432 if backup_verify_db_engine == 'postgresql' else 13306 }}"
+    db_name: "{{ backup_verify_db_name }}"
+    db_admin_user: postgres
+    db_restore_confirm: true
+  tags: [dr, backupverify]
+
+- name: Run integrity row-count check against the restored scratch database
+  community.postgresql.postgresql_query:
+    login_host: "127.0.0.1"
+    login_port: "{{ 15432 }}"
+    login_user: postgres
+    login_password: "{{ backup_verify_secret_value }}"
+    db: "{{ backup_verify_db_name }}"
+    query: "{{ backup_verify_row_count_query }}"
+  register: backup_verify_row_count_result
+  when: backup_verify_db_engine == 'postgresql'
+  no_log: true
+  tags: [dr, backupverify]
+
+- name: Evaluate restore verification pass/fail
+  ansible.builtin.set_fact:
+    backup_verify_pass: >-
+      {{ (backup_verify_row_count_result.query_result[0].count | default(0) | int)
+      >= (backup_verify_expected_min_row_count | int) }}
+  when: backup_verify_db_engine == 'postgresql'
+  tags: [dr, backupverify]
+
+- name: Compile database restore verification report
+  ansible.builtin.set_fact:
+    backup_verify_report:
+      hostname: "{{ inventory_hostname }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      source: database
+      db_engine: "{{ backup_verify_db_engine }}"
+      row_count: "{{ backup_verify_row_count_result.query_result[0].count | default('unknown') }}"
+      pass: "{{ backup_verify_pass | default(false) }}"
+  tags: [dr, backupverify]
+
+- name: Write verification report to disk
+  ansible.builtin.copy:
+    content: "{{ backup_verify_report | to_nice_json }}\n"
+    dest: "{{ backup_verify_report_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [dr, backupverify]
+
+- name: Notify verification result
+  ansible.builtin.uri:
+    url: "{{ backup_verify_notify_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: "Backup restore verification (database) on {{ inventory_hostname }}: pass={{ backup_verify_report.pass }}"
+    status_code: [200, 201, 204]
+  when: backup_verify_notify_webhook_url | length > 0
+  tags: [dr, backupverify]
+
+- name: Fail the play if restore verification did not pass
+  ansible.builtin.assert:
+    that:
+      - backup_verify_report.pass | bool
+    fail_msg: "Backup restore verification FAILED on {{ inventory_hostname }}: {{ backup_verify_report }}"
+    success_msg: "Backup restore verification PASSED on {{ inventory_hostname }}"
+  tags: [dr, backupverify]

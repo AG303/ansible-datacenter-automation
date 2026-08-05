@@ -1,0 +1,93 @@
+---
+# roles/certificate_management/tasks/deploy_cert.yml
+# Included once per certificate_deployments entry (cert_item).
+- name: "Retrieve certificate bundle for {{ cert_item.name }} from HashiCorp Vault"
+  ansible.builtin.set_fact:
+    _cert_bundle: "{{ lookup('community.hashi_vault.vault_kv2_get', cert_item.secret_path,
+                       engine_mount_point=vault_kv_mount, url=vault_addr).secret }}"
+  no_log: true
+  when: cert_item.secret_backend | default('vault') == 'vault'
+  tags: [security, tls]
+
+- name: "Retrieve certificate bundle for {{ cert_item.name }} from AWS Secrets Manager"
+  ansible.builtin.set_fact:
+    _cert_bundle: "{{ lookup('amazon.aws.aws_secret', cert_item.secret_path, region=aws_region) | from_json }}"
+  no_log: true
+  when: cert_item.secret_backend | default('vault') == 'aws_secrets_manager'
+  tags: [security, tls]
+
+- name: "Backup existing certificate/key for {{ cert_item.name }} before rotation"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ cert_backup_dir }}/{{ cert_item.name }}-{{ item | basename }}.bak-{{ ansible_date_time.iso8601_basic_short }}"
+    remote_src: true
+    mode: "0600"
+  loop:
+    - "{{ cert_item.cert_dest }}"
+    - "{{ cert_item.key_dest }}"
+  when:
+    - cert_backup_before_rotation | bool
+  failed_when: false
+  changed_when: false
+  tags: [security, tls]
+
+- name: "Deploy certificate for {{ cert_item.name }}"
+  ansible.builtin.copy:
+    content: "{{ _cert_bundle.certificate }}"
+    dest: "{{ cert_item.cert_dest }}"
+    owner: "{{ cert_item.owner | default('root') }}"
+    group: "{{ cert_item.group | default('root') }}"
+    mode: "{{ cert_item.cert_mode | default('0644') }}"
+  notify: "Reload {{ cert_item.notify_service }}"
+  when: cert_item.notify_service is defined
+  tags: [security, tls]
+
+- name: "Deploy certificate for {{ cert_item.name }} (no service notify configured)"
+  ansible.builtin.copy:
+    content: "{{ _cert_bundle.certificate }}"
+    dest: "{{ cert_item.cert_dest }}"
+    owner: "{{ cert_item.owner | default('root') }}"
+    group: "{{ cert_item.group | default('root') }}"
+    mode: "{{ cert_item.cert_mode | default('0644') }}"
+  when: cert_item.notify_service is not defined
+  tags: [security, tls]
+
+- name: "Deploy private key for {{ cert_item.name }}"
+  ansible.builtin.copy:
+    content: "{{ _cert_bundle.private_key }}"
+    dest: "{{ cert_item.key_dest }}"
+    owner: "{{ cert_item.owner | default('root') }}"
+    group: "{{ cert_item.group | default('root') }}"
+    mode: "{{ cert_item.key_mode | default('0600') }}"
+  no_log: true
+  notify: "Reload {{ cert_item.notify_service }}"
+  when: cert_item.notify_service is defined
+  tags: [security, tls]
+
+- name: "Deploy private key for {{ cert_item.name }} (no service notify configured)"
+  ansible.builtin.copy:
+    content: "{{ _cert_bundle.private_key }}"
+    dest: "{{ cert_item.key_dest }}"
+    owner: "{{ cert_item.owner | default('root') }}"
+    group: "{{ cert_item.group | default('root') }}"
+    mode: "{{ cert_item.key_mode | default('0600') }}"
+  no_log: true
+  when: cert_item.notify_service is not defined
+  tags: [security, tls]
+
+- name: "Deploy CA chain for {{ cert_item.name }} if provided"
+  ansible.builtin.copy:
+    content: "{{ _cert_bundle.chain }}"
+    dest: "{{ cert_item.chain_dest }}"
+    owner: "{{ cert_item.owner | default('root') }}"
+    group: "{{ cert_item.group | default('root') }}"
+    mode: "{{ cert_item.cert_mode | default('0644') }}"
+  when:
+    - cert_item.chain_dest is defined
+    - _cert_bundle.chain is defined
+  tags: [security, tls]
+
+- name: "Clear transient cert bundle fact for {{ cert_item.name }}"
+  ansible.builtin.set_fact:
+    _cert_bundle: null
+  tags: [security, tls]

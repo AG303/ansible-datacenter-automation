@@ -1,0 +1,17 @@
+---
+# roles/compliance_scan_reporting/tasks/redhat.yml — RedHat-family specific adjustments
+- name: Ensure lynis package is installed
+  ansible.builtin.package:
+    name: "{{ lynis_package_name[ansible_facts['os_family']] }}"
+    state: present
+  when: compliance_scan_tool == 'lynis'
+  tags: [security, compliance]
+
+- name: Ensure openscap-scanner and SCAP content packages are installed
+  ansible.builtin.package:
+    name:
+      - "{{ openscap_package_name[ansible_facts['os_family']] }}"
+      - scap-security-guide
+    state: present
+  when: compliance_scan_tool == 'openscap_scanner'
+  tags: [security, compliance]

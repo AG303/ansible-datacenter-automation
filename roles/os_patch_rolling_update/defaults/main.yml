@@ -1,0 +1,34 @@
+---
+# roles/os_patch_rolling_update/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+
+# --- Rolling rollout safety -------------------------------------------------
+# NOTE: serial / max_fail_percentage are set on the wrapper PLAY, not here,
+# because Ansible does not allow role-level serial. See
+# playbooks/patch_management/15_os_patch_rolling_update.yml.
+rolling_batch_size: "30%"
+# max_fail_percentage is intentionally NOT redeclared here as a role default:
+# it is a reserved Ansible play keyword, not a normal role variable. Set it
+# on the wrapper play itself (see playbooks/patch_management/15_os_patch_rolling_update.yml).
+
+# --- Update behaviour --------------------------------------------------------
+os_patch_exclude_packages: []          # e.g. ["kernel*", "glibc*"] to defer risky packages to a controlled window
+os_patch_autoremove: true              # remove no-longer-needed dependency packages after upgrade
+os_patch_update_cache: true            # refresh dnf/apt metadata cache before upgrading
+
+# --- Health checks -----------------------------------------------------------
+os_patch_pre_check_enabled: true
+os_patch_post_check_enabled: true
+os_patch_health_check_type: "service"   # "service" or "http"
+os_patch_health_check_service: "sshd"   # service to validate is active when health_check_type == service
+os_patch_health_check_url: "http://localhost/healthz"   # used when health_check_type == http
+os_patch_health_check_timeout: 10
+
+# --- Connection recovery after package manager restarts networking bits -----
+os_patch_wait_for_connection_timeout: 300
+os_patch_wait_for_connection_delay: 10
+
+# --- Approval gate ------------------------------------------------------------
+os_patch_pause_between_batches: false     # set true to require operator confirmation between serial batches
+os_patch_pause_prompt: "Batch complete and healthy. Press ENTER to continue to the next batch, or Ctrl+C then A to abort."

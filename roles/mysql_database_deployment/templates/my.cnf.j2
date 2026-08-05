@@ -1,0 +1,38 @@
+{{ ansible_managed | comment }}
+# Managed by the mysql_database_deployment Ansible role — do not edit by hand.
+
+[mysqld]
+bind-address = {{ mysql_bind_address }}
+max_connections = {{ mysql_max_connections }}
+character-set-server = {{ mysql_character_set_server }}
+collation-server = {{ mysql_collation_server }}
+
+# --- InnoDB tuning -----------------------------------------------------------
+innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
+innodb_log_file_size = {{ mysql_innodb_log_file_size }}
+innodb_flush_log_at_trx_commit = {{ mysql_innodb_flush_log_at_trx_commit }}
+
+# --- Slow query log -----------------------------------------------------------
+{% if mysql_slow_query_log %}
+slow_query_log = 1
+slow_query_log_file = {{ mysql_data_dir }}/slow-query.log
+long_query_time = {{ mysql_long_query_time }}
+{% else %}
+slow_query_log = 0
+{% endif %}
+
+{% if mysql_replication_enabled %}
+# --- Replication --------------------------------------------------------------
+server-id = {{ mysql_server_id }}
+log_bin = {{ mysql_data_dir }}/mysql-bin
+binlog_format = ROW
+gtid_strict_mode = 1
+{% if mysql_replication_role == 'source' %}
+enforce_gtid_consistency = ON
+gtid-mode = ON
+{% else %}
+enforce_gtid_consistency = ON
+gtid-mode = ON
+read_only = 1
+{% endif %}
+{% endif %}

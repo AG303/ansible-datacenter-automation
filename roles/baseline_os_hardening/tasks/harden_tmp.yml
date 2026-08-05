@@ -1,0 +1,38 @@
+---
+# roles/baseline_os_hardening/tasks/harden_tmp.yml
+- name: Check current /tmp mount options
+  ansible.builtin.set_fact:
+    _tmp_mount_info: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', '/tmp') | list }}"
+  tags: [security, baseline]
+
+- name: Update /etc/fstab with hardened /tmp mount options (only if /tmp is already a separate mount)
+  ansible.posix.mount:
+    path: /tmp
+    src: "{{ _tmp_mount_info[0].device }}"
+    fstype: "{{ _tmp_mount_info[0].fstype }}"
+    opts: "{{ baseline_tmp_mount_options }}"
+    state: present
+  when: _tmp_mount_info | length > 0
+  register: _tmp_fstab_result
+  tags: [security, baseline]
+
+- name: Remount /tmp with hardened options
+  ansible.posix.mount:
+    path: /tmp
+    src: "{{ _tmp_mount_info[0].device }}"
+    fstype: "{{ _tmp_mount_info[0].fstype }}"
+    opts: "{{ baseline_tmp_mount_options }}"
+    state: remounted
+  when:
+    - _tmp_mount_info | length > 0
+    - _tmp_fstab_result.changed
+  tags: [security, baseline]
+
+- name: Notify when /tmp is not a separate mount point
+  ansible.builtin.debug:
+    msg: >-
+      /tmp is not a separate mount point on this host — skipping mount-option
+      hardening. Consider provisioning a dedicated /tmp filesystem at image
+      build time if this is required for your environment.
+  when: _tmp_mount_info | length == 0
+  tags: [security, baseline]

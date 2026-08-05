@@ -1,0 +1,39 @@
+---
+# roles/dr_runbook_execution/defaults/main.yml
+# All values below are safe, conservative defaults. Override per-environment
+# via group_vars/host_vars — never edit this file directly for a specific site.
+# This role is the single top-level DR orchestration entry point: it chains the
+# other DR roles in the correct order behind one action switch.
+
+# --- Mode switch (mirrors dr_runbook_action in the wrapper playbook) --------------------
+dr_runbook_action: test               # test | execute
+
+# --- Inventory / target ------------------------------------------------------------------
+dr_site_group: dr_site
+
+# --- Step 1: health check -------------------------------------------------------------------
+dr_runbook_run_health_check: true
+
+# --- Step 2: snapshot latest state before any destructive action ----------------------------
+dr_runbook_run_snapshot: true
+dr_runbook_snapshot_lvm_volumes:
+  - vg: vg_data
+    lv: lv_db
+
+# --- Step 3: failover (destructive — only runs when dr_runbook_action == execute) -----------
+dr_runbook_run_failover: true
+dr_runbook_promotion_method: replica_command
+
+# --- Step 4: post-failover verification -------------------------------------------------------
+dr_runbook_run_verification: true
+
+# --- Step 5: notification -----------------------------------------------------------------------
+dr_runbook_notify_webhook_url: ""
+
+# --- Reporting -------------------------------------------------------------------------------------
+dr_runbook_report_path: "/var/log/dr_runbook_execution/runbook-{{ ansible_date_time.iso8601_basic_short }}.json"
+
+# --- Secrets manager (shared coordinates passed through to chained roles) --------------------------
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('https://vault.internal.example.com:8200', true) }}"
+vault_kv_mount: "kv"
+aws_region: "us-east-1"

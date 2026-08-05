@@ -1,0 +1,18 @@
+---
+# roles/unattended_upgrades_config/handlers/main.yml
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Restart dnf-automatic timer
+  ansible.builtin.systemd:
+    name: "{{ auto_patch_timer_name['RedHat'] }}"
+    state: restarted
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Restart unattended-upgrades service
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    state: restarted
+  when: ansible_facts['os_family'] == 'Debian'

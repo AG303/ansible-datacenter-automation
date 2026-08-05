@@ -1,0 +1,4 @@
+---
+# inventory/group_vars/debian_family.yml
+ansible_pkg_mgr_family: apt
+firewall_service_name: ufw
