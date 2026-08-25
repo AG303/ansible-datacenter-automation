@@ -3,8 +3,14 @@
 # All values below are safe, conservative defaults. Override per-environment
 # via group_vars/host_vars — never edit this file directly for a specific site.
 
-# --- Report output ------------------------------------------------------
-patch_inventory_report_dir: "/tmp/patch_reports"          # local dir on the control node (delegate_to: localhost)
+# --- Report output --------------------------------------------------------
+# Written to a persistent Linux host, NOT localhost: AAP 2.6 execution nodes
+# are ephemeral pods, so anything saved to localhost/the control node is lost
+# when the pod is recycled. patch_inventory_report_host defaults to the
+# collection-wide report_archive_host (inventory/group_vars/all.yml) but can
+# be overridden here alone if this role's reports need a different home.
+patch_inventory_report_host: "{{ report_archive_host }}"
+patch_inventory_report_dir: "{{ report_archive_base_dir }}/patch_inventory"
 patch_inventory_report_file: "{{ patch_inventory_report_dir }}/patch_inventory_{{ ansible_date_time.iso8601_basic_short }}.json"
 patch_inventory_write_csv: true
 patch_inventory_report_csv_file: "{{ patch_inventory_report_dir }}/patch_inventory_{{ ansible_date_time.iso8601_basic_short }}.csv"

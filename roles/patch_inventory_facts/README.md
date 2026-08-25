@@ -10,15 +10,18 @@ Read-only fleet-wide reporting role. It gathers full installed-package facts
 check (`dnf check-update` on RedHat family, `apt list --upgradable` on Debian
 family), computes an available-updates count per host, and — once every host
 in the play has reported — aggregates the results into a single JSON and CSV
-summary written to the control node via `delegate_to: localhost` /
-`run_once: true`. Designed to run ahead of any actual patch rollout so
-operators know the blast radius before touching anything.
+summary written to a persistent Linux host via
+`delegate_to: "{{ patch_inventory_report_host }}"` / `run_once: true`.
+AAP 2.6 execution nodes are ephemeral pods, so reports are never written to
+`localhost`. Designed to run ahead of any actual patch rollout so operators
+know the blast radius before touching anything.
 
 ## Key variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `patch_inventory_report_dir` | `/tmp/patch_reports` | Local directory on the control node where reports are written |
+| `patch_inventory_report_host` | `"{{ report_archive_host }}"` | Persistent Linux host reports are delegated/written to (AAP 2.6 execution nodes are ephemeral — never `localhost`) |
+| `patch_inventory_report_dir` | `{{ report_archive_base_dir }}/patch_inventory` | Directory on `patch_inventory_report_host` where reports are written |
 | `patch_inventory_report_file` | timestamped path under report dir | JSON summary output path |
 | `patch_inventory_write_csv` | `true` | Also write a flat CSV summary |
 | `patch_inventory_report_csv_file` | timestamped path under report dir | CSV summary output path |
@@ -33,6 +36,7 @@ operators know the blast radius before touching anything.
   roles:
     - role: patch_inventory_facts
       vars:
+        patch_inventory_report_host: "reports01.dc1.example.com"
         patch_inventory_report_dir: "/opt/patch_reports"
 ```
 
@@ -50,6 +54,10 @@ and check-update output. No Vault/AWS Secrets Manager lookups are used.
   separate play without re-gathering `patch_inventory_host_summary`).
 - `dnf check-update` legitimately exits `100` when updates are available;
   this is treated as a non-failure by default.
+- Override `report_archive_host` in `inventory/group_vars/all.yml` to repoint
+  every report-writing role in the collection at once, or set
+  `patch_inventory_report_host` here to give this role's reports a different
+  home than the rest.
 
 ## References
 

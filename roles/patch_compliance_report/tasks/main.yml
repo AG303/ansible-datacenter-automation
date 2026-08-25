@@ -70,17 +70,22 @@
   when: patch_compliance_fail_play_on_noncompliance | bool
   tags: [patch, patch_compliance_report]
 
-- name: Ensure local report directory exists on the control node
+- name: Ensure report directory exists on the persistent archive host
+  # NOTE: was `delegate_to: localhost`, but AAP 2.6 execution nodes are
+  # ephemeral pods, so localhost has no durable storage. The content here is
+  # fully rendered in-memory via Jinja (aggregated from hostvars), so there is
+  # nothing to "fetch" from a remote file — delegating the write straight to
+  # the persistent archive host is the correct/recommended replacement.
   ansible.builtin.file:
     path: "{{ patch_compliance_report_dir }}"
     state: directory
     mode: "0750"
-  delegate_to: localhost
+  delegate_to: "{{ patch_compliance_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_compliance_report]
 
-- name: Write fleet-wide compliance summary as JSON
+- name: Write fleet-wide compliance summary as JSON to the archive host
   ansible.builtin.copy:
     content: >-
       {{ {
@@ -91,12 +96,12 @@
       } | to_nice_json }}
     dest: "{{ patch_compliance_report_json }}"
     mode: "0640"
-  delegate_to: localhost
+  delegate_to: "{{ patch_compliance_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_compliance_report]
 
-- name: Write fleet-wide compliance summary as CSV
+- name: Write fleet-wide compliance summary as CSV to the archive host
   ansible.builtin.copy:
     content: |
       hostname,os_family,distribution,distribution_version,compliant,non_compliant_packages,checked_at
@@ -106,7 +111,7 @@
       {% endfor %}
     dest: "{{ patch_compliance_report_csv }}"
     mode: "0640"
-  delegate_to: localhost
+  delegate_to: "{{ patch_compliance_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_compliance_report]
@@ -114,9 +119,9 @@
 - name: Report file locations
   ansible.builtin.debug:
     msg:
-      - "JSON compliance report written to {{ patch_compliance_report_json }}"
-      - "CSV compliance report written to {{ patch_compliance_report_csv }}"
-  delegate_to: localhost
+      - "JSON compliance report written to {{ patch_compliance_report_host }}:{{ patch_compliance_report_json }}"
+      - "CSV compliance report written to {{ patch_compliance_report_host }}:{{ patch_compliance_report_csv }}"
+  delegate_to: "{{ patch_compliance_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_compliance_report]

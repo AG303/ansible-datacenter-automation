@@ -81,17 +81,22 @@
       checked_at: "{{ ansible_date_time.iso8601 }}"
   tags: [patch, patch_inventory_facts]
 
-- name: Ensure local report directory exists on the control node
+- name: Ensure report directory exists on the persistent archive host
+  # NOTE: was `delegate_to: localhost`, but AAP 2.6 execution nodes are
+  # ephemeral pods, so localhost has no durable storage. The content here is
+  # fully rendered in-memory via Jinja (aggregated from hostvars), so there is
+  # nothing to "fetch" from a remote file — delegating the write straight to
+  # the persistent archive host is the correct/recommended replacement.
   ansible.builtin.file:
     path: "{{ patch_inventory_report_dir }}"
     state: directory
     mode: "0750"
-  delegate_to: localhost
+  delegate_to: "{{ patch_inventory_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_inventory_facts]
 
-- name: Aggregate fleet-wide patch inventory summary and write JSON report
+- name: Aggregate fleet-wide patch inventory summary and write JSON report to the archive host
   ansible.builtin.copy:
     content: "{{ patch_inventory_fleet_summary | to_nice_json }}"
     dest: "{{ patch_inventory_report_file }}"
@@ -104,12 +109,12 @@
         {{ ansible_play_hosts_all
            | map('extract', hostvars, 'patch_inventory_host_summary')
            | list }}
-  delegate_to: localhost
+  delegate_to: "{{ patch_inventory_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_inventory_facts]
 
-- name: Write fleet-wide patch inventory summary as CSV
+- name: Write fleet-wide patch inventory summary as CSV to the archive host
   ansible.builtin.copy:
     content: |
       hostname,os_family,distribution,distribution_version,kernel,available_updates_count,installed_package_count,checked_at
@@ -119,7 +124,7 @@
       {% endfor %}
     dest: "{{ patch_inventory_report_csv_file }}"
     mode: "0640"
-  delegate_to: localhost
+  delegate_to: "{{ patch_inventory_report_host }}"
   become: false
   run_once: true
   when: patch_inventory_write_csv | bool
@@ -135,9 +140,9 @@
 - name: Report file locations
   ansible.builtin.debug:
     msg:
-      - "JSON report written to {{ patch_inventory_report_file }}"
-      - "CSV report written to {{ patch_inventory_report_csv_file }}"
-  delegate_to: localhost
+      - "JSON report written to {{ patch_inventory_report_host }}:{{ patch_inventory_report_file }}"
+      - "CSV report written to {{ patch_inventory_report_host }}:{{ patch_inventory_report_csv_file }}"
+  delegate_to: "{{ patch_inventory_report_host }}"
   become: false
   run_once: true
   tags: [patch, patch_inventory_facts]

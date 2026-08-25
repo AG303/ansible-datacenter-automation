@@ -26,20 +26,53 @@
     mode: "0600"
   tags: [patch, patch_rollback_snapshot]
 
-- name: Ensure local rollback-state backup directory exists on the control node
+# --- Durable off-host copy ---------------------------------------------------
+# AAP 2.6 execution nodes are ephemeral pods, so the previous "copy to the
+# control node" step no longer produces anything durable. `fetch` can only
+# ever pull a remote file to the node running Ansible (never directly to a
+# third host), so the pattern is: fetch to a transient local staging path on
+# the execution node, then immediately `copy` (delegate_to the persistent
+# archive host) to push it off the pod before it is recycled.
+- name: Ensure local fetch-staging directory exists on the execution node
   ansible.builtin.file:
-    path: "{{ patch_rollback_local_copy_dir }}"
+    path: "{{ patch_rollback_local_fetch_stage }}"
     state: directory
     mode: "0750"
   delegate_to: localhost
   become: false
   tags: [patch, patch_rollback_snapshot]
 
-- name: Fetch a durable copy of the snapshot fact file to the control node
+- name: Fetch the snapshot fact file to transient execution-node staging
   ansible.builtin.fetch:
     src: "{{ patch_rollback_state_file }}"
-    dest: "{{ patch_rollback_local_copy_dir }}/{{ inventory_hostname }}_package_versions.json"
+    dest: "{{ patch_rollback_local_fetch_stage }}/{{ inventory_hostname }}_package_versions.json"
     flat: true
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Ensure rollback-state archive directory exists on the persistent archive host
+  ansible.builtin.file:
+    path: "{{ patch_rollback_archive_dir }}"
+    state: directory
+    mode: "0750"
+  delegate_to: "{{ patch_rollback_archive_host }}"
+  become: false
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Push the durable snapshot copy from execution-node staging to the archive host
+  ansible.builtin.copy:
+    src: "{{ patch_rollback_local_fetch_stage }}/{{ inventory_hostname }}_package_versions.json"
+    dest: "{{ patch_rollback_archive_dir }}/{{ inventory_hostname }}_package_versions.json"
+    mode: "0640"
+  delegate_to: "{{ patch_rollback_archive_host }}"
+  become: false
+  tags: [patch, patch_rollback_snapshot]
+
+- name: Remove transient fetch-staging copy from the execution node
+  ansible.builtin.file:
+    path: "{{ patch_rollback_local_fetch_stage }}/{{ inventory_hostname }}_package_versions.json"
+    state: absent
+  delegate_to: localhost
+  become: false
   tags: [patch, patch_rollback_snapshot]
 
 - name: Confirm snapshot recorded
@@ -47,5 +80,5 @@
     msg: >-
       Recorded {{ patch_rollback_snapshot_doc.packages | length }} package versions for
       {{ inventory_hostname }} to {{ patch_rollback_state_file }}
-      (control-node copy: {{ patch_rollback_local_copy_dir }}/{{ inventory_hostname }}_package_versions.json)
+      (durable archive copy: {{ patch_rollback_archive_host }}:{{ patch_rollback_archive_dir }}/{{ inventory_hostname }}_package_versions.json)
   tags: [patch, patch_rollback_snapshot]

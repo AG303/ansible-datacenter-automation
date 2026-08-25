@@ -115,6 +115,48 @@ each one's README documents (e.g. `dr_failover_confirm=true`).
 ansible-playbook -i inventory/hosts.yml <playbook> --check --diff --limit <a_test_group>
 ```
 
+## Report/artifact output on Ansible Automation Platform 2.6+
+
+AAP 2.6 runs playbooks on **ephemeral execution-node pods**. Anything written
+to `localhost`/the control node (via `delegate_to: localhost`,
+`connection: local`, or `hosts: localhost`) disappears the moment the pod is
+recycled and is never reachable outside that single run — it is never a valid
+destination for a report, snapshot, or any other artifact that needs to
+persist.
+
+Every role in this collection that generates a durable file
+(`patch_inventory_facts`, `patch_compliance_report`, `patch_rollback_snapshot`)
+delegates its final write to a real, persistent Linux host instead, resolved
+from one collection-wide variable:
+
+```yaml
+# inventory/group_vars/all.yml
+report_archive_host: "report-archive.dc1.example.com"
+report_archive_base_dir: "/srv/ansible-reports"
+```
+
+Override `report_archive_host` / `report_archive_base_dir` once (fleet-wide,
+in `inventory/group_vars/all.yml`) to repoint **every** report-writing role at
+a different archive host without touching any role code. Each affected role
+also exposes its own `<role>_report_host` / `<role>_archive_host` default
+(defaulting to `report_archive_host`) if that role's output needs a different
+home than the rest of the collection — see each role's README for the exact
+variable names. The `report_archive` inventory group in
+`inventory/hosts.example.yml`, paired with `inventory/group_vars/report_archive.yml`,
+is where you define connection details (SSH user/key, jump host, etc.) for
+whatever host(s) you point `report_archive_host` at.
+
+For content that is fully rendered in memory (JSON/CSV built from `hostvars`
+via Jinja), the conversion is simply pointing `ansible.builtin.copy`'s
+`delegate_to` at the archive host instead of `localhost` — there is no
+remote source file to fetch, so nothing else changes. For content that must
+first be pulled off a managed host (e.g. `patch_rollback_snapshot`'s
+pre-patch package-version fact file), the pattern is `ansible.builtin.fetch`
+to a transient local staging path on the execution node, immediately followed
+by `ansible.builtin.copy` (`delegate_to` the archive host) to push it off the
+pod before it is destroyed, with the staging copy removed at the end of the
+same play.
+
 ## The 50 roles
 
 ### Security & Compliance (13)

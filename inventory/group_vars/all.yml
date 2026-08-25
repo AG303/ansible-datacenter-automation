@@ -20,3 +20,25 @@ max_fail_percentage: 10
 backup_retention_days: 30
 dr_site_group: "dr_site"
 primary_site_group: "web_tier"
+
+# --- Persistent report/artifact archive host ---------------------------------
+# On Ansible Automation Platform 2.6+, playbooks run on EPHEMERAL execution-node
+# pods: any file written to "localhost" (the execution node itself, via
+# delegate_to: localhost / connection: local / hosts: localhost) disappears the
+# moment the pod is recycled, and is never reachable outside that single run.
+# Every role in this collection that generates a report, snapshot, or other
+# durable artifact delegates its final write to a real, persistent Linux host
+# instead — resolved from the single variable below. Override it here (fleet-
+# wide), in a more specific group_vars/host_vars file, via an AAP survey, or
+# with -e report_archive_host=... to repoint EVERY report-writing role in this
+# collection at a different archive host without editing any role code.
+#
+# The value must be a host Ansible can reach (resolvable directly, or an alias
+# defined in the `report_archive` inventory group — see inventory/hosts.example.yml
+# and inventory/group_vars/report_archive.yml for the accompanying connection vars).
+report_archive_host: "report-archive.dc1.example.com"
+
+# Base directory on report_archive_host under which each role creates its own
+# subdirectory (e.g. {{ report_archive_base_dir }}/patch_inventory). Must be
+# writable by the account Ansible connects to report_archive_host as.
+report_archive_base_dir: "/srv/ansible-reports"

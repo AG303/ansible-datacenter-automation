@@ -12,7 +12,22 @@ patch_rollback_mode: "snapshot"
 # --- Fact-file recording (used in BOTH modes) ------------------------------------
 patch_rollback_state_dir: "/var/lib/ansible-patch-rollback"
 patch_rollback_state_file: "{{ patch_rollback_state_dir }}/package_versions_{{ inventory_hostname }}.json"
-patch_rollback_local_copy_dir: "/tmp/patch_reports/rollback_state"   # also copied back to the control node for durability
+
+# --- Durable off-host copy --------------------------------------------------
+# A second copy of the fact file is archived to a persistent Linux host so a
+# rollback is still possible even if the managed host itself is rebuilt.
+# AAP 2.6 execution nodes are ephemeral pods, so this can no longer be "the
+# control node" (localhost) as before — it must be a real, addressable host.
+# patch_rollback_archive_host defaults to the collection-wide
+# report_archive_host (inventory/group_vars/all.yml) but can be overridden
+# here alone if rollback state needs a different home than other reports.
+patch_rollback_archive_host: "{{ report_archive_host }}"
+patch_rollback_archive_dir: "{{ report_archive_base_dir }}/rollback_state"
+# Transient staging path on the execution node itself, used only for the
+# duration of the `fetch` -> `copy` hop within this single play run (fetch
+# can only pull to the node running Ansible, never directly to a third host).
+# Nothing durable is ever expected to remain here between runs.
+patch_rollback_local_fetch_stage: "/tmp/ansible_rollback_fetch_stage"
 
 # --- LVM snapshot (optional, RedHat/Debian both support LVM if the host uses it) --
 patch_rollback_lvm_enabled: false      # only enable on hosts whose root/var volumes are LVM-backed

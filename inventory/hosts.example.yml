@@ -37,3 +37,14 @@ all:
       hosts:
         web01.dc2.example.com:
         db01.dc2.example.com:
+
+    # Persistent Linux host that receives reports/snapshots from every
+    # report-writing role in this collection (see report_archive_host in
+    # inventory/group_vars/all.yml and inventory/group_vars/report_archive.yml).
+    # Required because AAP 2.6 execution nodes are ephemeral pods with no
+    # durable local storage — localhost is never a valid report destination.
+    report_archive:
+      hosts:
+        report-archive.dc1.example.com:
+      vars:
+        ansible_python_interpreter: /usr/bin/python3

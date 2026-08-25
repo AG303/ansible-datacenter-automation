@@ -1,0 +1,25 @@
+---
+# inventory/group_vars/report_archive.yml
+# Connection variables for the `report_archive` inventory group — the
+# persistent Linux host(s) that receive reports/snapshots from every
+# report-writing role in this collection (patch_inventory_facts,
+# patch_compliance_report, patch_rollback_snapshot). See report_archive_host
+# / report_archive_base_dir in inventory/group_vars/all.yml.
+#
+# This host is reached via `delegate_to`, not by being targeted directly in
+# a play's `hosts:` line, so Ansible still needs its own connection details
+# here exactly as it would for any other managed host.
+
+ansible_python_interpreter: /usr/bin/python3
+
+# Uncomment and adapt if the archive host needs different connection settings
+# than the rest of the fleet (dedicated service account, non-default SSH key,
+# bastion/jump host, etc.):
+# ansible_user: ansible_reports
+# ansible_ssh_private_key_file: /etc/ansible/keys/report_archive_id_ed25519
+# ansible_ssh_common_args: "-o ProxyJump=bastion.dc1.example.com"
+
+# Reports are written by an unprivileged copy/file task, not by anything that
+# needs root — leave become disabled here unless your target directory
+# requires elevated permissions to create/write.
+become: false

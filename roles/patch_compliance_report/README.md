@@ -12,8 +12,9 @@ robust version comparison across both RPM and dpkg version schemes. Hosts
 missing a baseline package that is marked in `patch_baseline_required_packages`
 are treated as non-compliant; hosts with an installed version below the
 baseline minimum are also flagged. Produces a per-host debug summary plus an
-aggregated JSON and CSV compliance report written to the control node at play
-end.
+aggregated JSON and CSV compliance report delegated to a persistent Linux
+host at play end — never to `localhost`, since AAP 2.6 execution nodes are
+ephemeral pods with no durable storage.
 
 ## Key variables
 
@@ -21,7 +22,8 @@ end.
 |---|---|---|
 | `required_patch_baseline` | sample dict (openssl/openssh-server/kernel) | Package name -> minimum acceptable version |
 | `patch_baseline_required_packages` | `[]` | Subset of baseline packages that MUST be installed (missing = non-compliant); others are skipped if not installed |
-| `patch_compliance_report_dir` | `/tmp/patch_reports` | Local report output directory on the control node |
+| `patch_compliance_report_host` | `"{{ report_archive_host }}"` | Persistent Linux host reports are delegated/written to (AAP 2.6 execution nodes are ephemeral — never `localhost`) |
+| `patch_compliance_report_dir` | `{{ report_archive_base_dir }}/patch_compliance` | Directory on `patch_compliance_report_host` where reports are written |
 | `patch_compliance_report_json` / `_csv` | timestamped paths | Report output file paths |
 | `patch_compliance_fail_play_on_noncompliance` | `false` | Set `true` to fail the play immediately for any non-compliant host (strict gating mode) |
 
@@ -55,6 +57,10 @@ lookups are used.
 - Set `patch_compliance_fail_play_on_noncompliance: true` only in pipelines
   where a hard compliance gate (e.g. pre-audit) is desired; the default is a
   non-blocking reporting mode.
+- Override `report_archive_host` in `inventory/group_vars/all.yml` to repoint
+  every report-writing role in the collection at once, or set
+  `patch_compliance_report_host` here to give this role's reports a different
+  home than the rest.
 
 ## References
 
