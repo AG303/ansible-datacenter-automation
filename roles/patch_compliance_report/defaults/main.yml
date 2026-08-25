@@ -19,8 +19,8 @@ patch_baseline_required_packages: []   # packages in required_patch_baseline tha
 # when the pod is recycled. patch_compliance_report_host defaults to the
 # collection-wide report_archive_host (inventory/group_vars/all.yml) but can
 # be overridden here alone if this role's reports need a different home.
-patch_compliance_report_host: "{{ report_archive_host }}"
-patch_compliance_report_dir: "{{ report_archive_base_dir }}/patch_compliance"
+patch_compliance_report_host: "aap.examplelab.com"
+patch_compliance_report_dir: "/var/tmp/ansible/patch_compliance"
 patch_compliance_report_json: "{{ patch_compliance_report_dir }}/patch_compliance_{{ ansible_date_time.iso8601_basic_short }}.json"
 patch_compliance_report_csv: "{{ patch_compliance_report_dir }}/patch_compliance_{{ ansible_date_time.iso8601_basic_short }}.csv"
 
