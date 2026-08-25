@@ -36,9 +36,9 @@ primary_site_group: "web_tier"
 # The value must be a host Ansible can reach (resolvable directly, or an alias
 # defined in the `report_archive` inventory group — see inventory/hosts.example.yml
 # and inventory/group_vars/report_archive.yml for the accompanying connection vars).
-report_archive_host: "report-archive.dc1.example.com"
+report_archive_host: "aap.examplelab.com"
 
 # Base directory on report_archive_host under which each role creates its own
 # subdirectory (e.g. {{ report_archive_base_dir }}/patch_inventory). Must be
 # writable by the account Ansible connects to report_archive_host as.
-report_archive_base_dir: "/srv/ansible-reports"
+report_archive_base_dir: "/var/tmp/ansible/report_archive"
