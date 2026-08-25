@@ -11,7 +11,7 @@ required_patch_baseline:
   openssl: "1.1.1k"
   openssh-server: "8.0"
   kernel: "4.18.0"
-patch_baseline_required_packages: []   # packages in required_patch_baseline that MUST be present (missing = non-compliant); others are only checked if installed
+patch_baseline_required_packages: ["openssl", "openssh-server"]   # packages in required_patch_baseline that MUST be present (missing = non-compliant); others are only checked if installed
 
 # --- Output -----------------------------------------------------------------
 # Written to a persistent Linux host, NOT localhost: AAP 2.6 execution nodes
